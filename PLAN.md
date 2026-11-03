@@ -29,6 +29,7 @@ Phase 4: Job Scraping
 * [x] Fetch job posting content from the supplied URL.
 * [x] Clean and normalize extracted content.
 * [x] Handle scraping errors.
+* [x] Reject search-results URLs and incomplete job descriptions.
 
 Phase 5: AI Analysis
 
@@ -40,6 +41,8 @@ Phase 5: AI Analysis
 * [x] Validate structured AI responses.
 * [x] Use configurable Gemini primary and fallback models.
 * [x] Retry transient Gemini failures with bounded exponential backoff.
+* [x] Extract and validate job requirements before résumé comparison.
+* [x] Ground every prioritized gap in job and résumé evidence.
 
 Phase 6: Results
 
@@ -47,6 +50,7 @@ Phase 6: Results
 * [x] Display score, matching skills, gaps and recommendations.
 * [x] Add loading, error and empty states.
 * [x] Ensure responsive results layout.
+* [x] Prioritize missing requirements and actionable improvements in results.
 
 Phase 7: Final Verification
 

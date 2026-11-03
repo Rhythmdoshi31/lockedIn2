@@ -5,6 +5,7 @@ import ContextDev from "context.dev";
 import { pipelineLog } from "@/lib/pipeline-log";
 
 const MAXIMUM_JOB_TEXT_LENGTH = 60_000;
+const MINIMUM_JOB_WORDS = 120;
 
 export class JobScrapeError extends Error {
   constructor(
@@ -66,6 +67,66 @@ export function validatePublicJobUrl(value: string): URL {
   return url;
 }
 
+function isSearchResultsUrl(url: URL): boolean {
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+  const pathname = url.pathname.toLowerCase();
+  const hasSearchQuery = ["q", "query", "keywords", "keyword"].some((key) => url.searchParams.has(key));
+
+  if (/^(google\.|bing\.com$|search\.yahoo\.com$|duckduckgo\.com$)/.test(hostname)) {
+    return pathname.includes("search") || hasSearchQuery;
+  }
+  if (hostname.endsWith("linkedin.com") && pathname.startsWith("/jobs/search")) return true;
+  if (hostname.endsWith("indeed.com") && pathname === "/jobs" && hasSearchQuery) return true;
+  if (hostname.endsWith("glassdoor.com") && /\/job\/jobs|\/job-search/.test(pathname)) return true;
+  return /\/(?:jobs?|careers?)\/search(?:\/|$)/.test(pathname);
+}
+
+function validateExtractedJobText(text: string, partialResponse: boolean): void {
+  const normalized = text.toLowerCase();
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const searchResultSignals = [
+    "job search results",
+    "jobs found",
+    "jobs matching",
+    "search jobs",
+    "create job alert",
+  ].filter((signal) => normalized.includes(signal)).length;
+  const descriptionSignals = [
+    "responsibilities",
+    "requirements",
+    "qualifications",
+    "about the role",
+    "what you'll do",
+    "what you will do",
+    "preferred qualifications",
+    "minimum qualifications",
+    "must have",
+    "required experience",
+    "required skills",
+    "we are looking for",
+    "you will be responsible",
+  ].filter((signal) => normalized.includes(signal)).length;
+
+  if (searchResultSignals >= 2) {
+    throw new JobScrapeError(
+      "This appears to be a job-search results page. Open the specific role and paste its direct job posting URL.",
+      "DIRECT_JOB_URL_REQUIRED",
+    );
+  }
+  if (wordCount < MINIMUM_JOB_WORDS || descriptionSignals === 0) {
+    throw new JobScrapeError(
+      "The page did not include a complete job description. Paste the direct URL for the specific role, with its responsibilities and requirements visible.",
+      "INCOMPLETE_JOB_DESCRIPTION",
+    );
+  }
+  if (partialResponse && wordCount < MINIMUM_JOB_WORDS * 2) {
+    throw new JobScrapeError(
+      "Only part of this job description could be read. Paste a direct, publicly accessible URL for the specific role.",
+      "INCOMPLETE_JOB_DESCRIPTION",
+    );
+  }
+}
+
 export async function scrapeJobDescription(
   value: string,
   apiKey: string,
@@ -75,6 +136,12 @@ export async function scrapeJobDescription(
   let url: URL;
   try {
     url = validatePublicJobUrl(value);
+    if (isSearchResultsUrl(url)) {
+      throw new JobScrapeError(
+        "This is a job-search results URL. Open the specific role and paste its direct job posting URL.",
+        "DIRECT_JOB_URL_REQUIRED",
+      );
+    }
     pipelineLog({
       requestId,
       stage: "context.validation",
@@ -127,9 +194,37 @@ export async function scrapeJobDescription(
       .trim()
       .slice(0, MAXIMUM_JOB_TEXT_LENGTH);
 
-    if (text.length < 100) {
-      throw new JobScrapeError("The job posting did not contain enough readable content.", "EMPTY_JOB_TEXT");
+    const contentValidationStartedAt = performance.now();
+    try {
+      validateExtractedJobText(text, page.isPartial === true);
+    } catch (error) {
+      pipelineLog({
+        requestId,
+        stage: "context.content_validation",
+        event: "job_description_validation",
+        status: "rejected",
+        durationMs: Math.round(performance.now() - contentValidationStartedAt),
+        details: {
+          extractedCharacters: text.length,
+          extractedWords: text.split(/\s+/).filter(Boolean).length,
+          partialResponse: page.isPartial === true,
+        },
+        error,
+      });
+      throw error;
     }
+    pipelineLog({
+      requestId,
+      stage: "context.content_validation",
+      event: "job_description_validation",
+      status: "succeeded",
+      durationMs: Math.round(performance.now() - contentValidationStartedAt),
+      details: {
+        extractedCharacters: text.length,
+        extractedWords: text.split(/\s+/).filter(Boolean).length,
+        partialResponse: page.isPartial === true,
+      },
+    });
 
     pipelineLog({
       requestId,

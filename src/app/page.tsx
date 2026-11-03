@@ -118,22 +118,6 @@ function UploadField({ file, restoring, onChange, onRemove }: UploadFieldProps) 
   );
 }
 
-interface ResultListProps {
-  number: string;
-  title: string;
-  items: string[];
-}
-
-function ResultList({ number, title, items }: ResultListProps) {
-  return (
-    <article className="report-card">
-      <span>{number}</span>
-      <h3>{title}</h3>
-      <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
-    </article>
-  );
-}
-
 function AnalysisResults({ result }: { result: AnalysisResult }) {
   const rubric = [
     ["Skills", result.rubric.skills, 45],
@@ -152,73 +136,91 @@ function AnalysisResults({ result }: { result: AnalysisResult }) {
       transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className="results-kicker">
-        <span>Analysis</span>
-        <span>Evidence-based score</span>
+        <span>Gap analysis</span>
+        <span>{result.requirementsAnalyzed} requirements checked</span>
       </div>
       <div className="results-intro">
         <div>
-          <p className="eyebrow">Your alignment</p>
+          <p className="eyebrow">{result.jobTitle}</p>
           <h2 id="results-title">{result.summaryTitle}</h2>
         </div>
         <div className="score" aria-label={`Match score: ${result.score} out of 100`}>
           <strong>{result.score}</strong>
-          <span>/ 100</span>
+          <span>match<br />/ 100</span>
         </div>
       </div>
-      <div className="results-rule" />
 
-      <div className="rubric-grid" aria-label="Score breakdown">
-        {rubric.map(([label, score, total]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong>{score}<small>/{total}</small></strong>
+      <section className="gaps-focus" aria-labelledby="gaps-title">
+        <div className="focus-heading">
+          <div>
+            <p className="section-label">Your priority list</p>
+            <h3 id="gaps-title">Missing Requirements<br />and Actionable Improvements</h3>
           </div>
-        ))}
-      </div>
-
-      <div className="skills-block">
-        <p className="section-label">Matching skills</p>
-        <div className="skill-list">
-          {result.matchingSkills.length > 0 ? (
-            result.matchingSkills.map((skill) => <span key={skill}>{skill}</span>)
-          ) : (
-            <p>No directly matching skills were verified.</p>
-          )}
+          <span>{result.gaps.length} finding{result.gaps.length === 1 ? "" : "s"}</span>
         </div>
-      </div>
 
-      {result.missingSkills.length > 0 && (
-        <div className="missing-skills-block">
-          <p className="section-label">Missing or unverified</p>
-          <div className="missing-skill-list">
-            {result.missingSkills.map((item) => (
-              <article key={`${item.skill}-${item.status}`}>
-                <div><strong>{item.skill}</strong><span>{item.status}</span></div>
-                <p>{item.explanation}</p>
+        {result.gaps.length > 0 ? (
+          <div className="gap-list">
+            {result.gaps.map((gap, index) => (
+              <article className={`gap-card priority-${gap.priority.toLowerCase()}`} key={`${gap.requirement}-${index}`}>
+                <div className="gap-card-heading">
+                  <span className="priority-badge">{gap.priority}</span>
+                  <span>{gap.category} · {gap.status}</span>
+                </div>
+                <h4>{gap.requirement}</h4>
+                <div className="gap-evidence">
+                  <div>
+                    <span>Job requires</span>
+                    <p>{gap.jobRequires}</p>
+                  </div>
+                  <div>
+                    <span>Résumé shows</span>
+                    <p>{gap.resumeEvidence}</p>
+                  </div>
+                  <div className="gap-action">
+                    <span>How to improve</span>
+                    <p>{gap.improvement}</p>
+                  </div>
+                </div>
               </article>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="no-gaps">No material missing requirements were found in the résumé evidence.</p>
+        )}
+      </section>
 
-      <div className="report-grid">
-        <ResultList number="01" title="Gaps" items={result.gaps} />
-        <ResultList number="02" title="Strengths" items={result.strengths} />
-        <ResultList number="03" title="Recommendations" items={result.recommendations} />
-      </div>
-
-      {result.sectionFeedback.length > 0 && (
-        <div className="section-feedback">
-          <p className="section-label">Section-by-section</p>
-          {result.sectionFeedback.map((item) => (
-            <article key={item.section}>
-              <h3>{item.section}</h3>
-              <p>{item.assessment}</p>
-            </article>
+      <section className="score-detail" aria-label="Score breakdown">
+        <p className="section-label">Secondary view · score breakdown</p>
+        <div className="rubric-grid">
+          {rubric.map(([label, score, total]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong>{score}<small>/{total}</small></strong>
+            </div>
           ))}
         </div>
-      )}
-      <p className="result-note">Recommendations are limited to experience evidenced in your résumé.</p>
+      </section>
+
+      <section className="supporting-evidence">
+        <div className="supporting-column">
+          <p className="section-label">Matching skills</p>
+          <div className="skill-list subdued">
+            {result.matchingSkills.length > 0 ? (
+              result.matchingSkills.map((skill) => <span key={skill}>{skill}</span>)
+            ) : (
+              <p>No directly matching skills were verified.</p>
+            )}
+          </div>
+        </div>
+        <div className="supporting-column">
+          <p className="section-label">Evidence-backed strengths</p>
+          <ul className="strength-list">
+            {result.strengths.map((strength) => <li key={strength}>{strength}</li>)}
+          </ul>
+        </div>
+      </section>
+      <p className="result-note">Every finding is tied to a stated job requirement and checked against résumé evidence.</p>
     </motion.section>
   );
 }

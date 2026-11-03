@@ -140,7 +140,12 @@ export async function POST(request: Request) {
       return errorResponse(requestId, error.code, error.message, 422, requestStartedAt);
     }
     if (error instanceof AnalysisError) {
-      return errorResponse(requestId, error.code, error.message, 502, requestStartedAt);
+      const status = ["DIRECT_JOB_URL_REQUIRED", "INCOMPLETE_JOB_DESCRIPTION"].includes(error.code)
+        ? 422
+        : error.code === "INVALID_AI_CONFIGURATION"
+          ? 500
+          : 502;
+      return errorResponse(requestId, error.code, error.message, status, requestStartedAt);
     }
 
     pipelineLog({
