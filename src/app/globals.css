@@ -43,19 +43,18 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .geometric-line-art {
   height: 100%;
   inset: 0;
-  mask-image: linear-gradient(to left, black 0 62%, transparent 94%);
+  opacity: 0.08;
   pointer-events: none;
   position: fixed;
   width: 100%;
   z-index: -3;
 }
-.geometric-line-art g {
+.geometric-line-art path {
   fill: none;
-  opacity: 0.11;
   stroke: #45564b;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.15;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 .artwork {
