@@ -44,6 +44,7 @@ Phase 5: AI Analysis
 * [x] Retry transient Gemini failures with bounded exponential backoff.
 * [x] Extract and validate job requirements before résumé comparison.
 * [x] Ground every prioritized gap in job and résumé evidence.
+* [x] Use a Gemini-compatible generation schema while retaining full Zod validation.
 
 Phase 6: Results
 
