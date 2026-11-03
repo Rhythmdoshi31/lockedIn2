@@ -38,6 +38,8 @@ Phase 5: AI Analysis
 * [x] Compare skills and experience.
 * [x] Calculate score using a documented rubric.
 * [x] Validate structured AI responses.
+* [x] Use configurable Gemini primary and fallback models.
+* [x] Retry transient Gemini failures with bounded exponential backoff.
 
 Phase 6: Results
 

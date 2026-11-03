@@ -25,6 +25,8 @@ Job Description Extraction
 AI Analysis
 
 * LLM provider: Gemini via `@google/genai`.
+* Primary model: `gemini-3.5-flash-lite`, with configurable supported fallback models.
+* Retry transient Gemini 429/503 responses with bounded exponential backoff.
 * Structured JSON output for predictable analysis.
 * Server-side API integration.
 
