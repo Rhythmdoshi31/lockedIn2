@@ -30,6 +30,7 @@ Phase 4: Job Scraping
 * [x] Clean and normalize extracted content.
 * [x] Handle scraping errors.
 * [x] Reject search-results URLs and incomplete job descriptions.
+* [x] Resolve and verify LinkedIn `currentJobId` and `/jobs/view/{id}` URLs.
 
 Phase 5: AI Analysis
 

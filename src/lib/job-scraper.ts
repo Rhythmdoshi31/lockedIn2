@@ -6,6 +6,26 @@ import { pipelineLog } from "@/lib/pipeline-log";
 
 const MAXIMUM_JOB_TEXT_LENGTH = 60_000;
 const MINIMUM_JOB_WORDS = 120;
+const LINKEDIN_JOB_ID_PATTERN = /^\d{6,20}$/;
+
+interface LinkedInJobTarget {
+  jobId: string;
+  source: "direct" | "search_results";
+  scrapeUrl: string;
+}
+
+interface ScrapedPageIdentity {
+  url: string;
+  metadata: {
+    canonicalUrl?: string;
+    jsonLd?: Array<Record<string, unknown>>;
+    openGraph?: Record<string, string | string[]>;
+  };
+}
+
+function isLinkedInHostname(hostname: string): boolean {
+  return hostname === "linkedin.com" || hostname.endsWith(".linkedin.com");
+}
 
 export class JobScrapeError extends Error {
   constructor(
@@ -75,13 +95,67 @@ function isSearchResultsUrl(url: URL): boolean {
   if (/^(google\.|bing\.com$|search\.yahoo\.com$|duckduckgo\.com$)/.test(hostname)) {
     return pathname.includes("search") || hasSearchQuery;
   }
-  if (hostname.endsWith("linkedin.com") && pathname.startsWith("/jobs/search")) return true;
+  if (isLinkedInHostname(hostname) && pathname.startsWith("/jobs/search")) return true;
   if (hostname.endsWith("indeed.com") && pathname === "/jobs" && hasSearchQuery) return true;
   if (hostname.endsWith("glassdoor.com") && /\/job\/jobs|\/job-search/.test(pathname)) return true;
   return /\/(?:jobs?|careers?)\/search(?:\/|$)/.test(pathname);
 }
 
-function validateExtractedJobText(text: string, partialResponse: boolean): void {
+function validatedLinkedInJobId(value: string | null): string | null {
+  if (!value || !LINKEDIN_JOB_ID_PATTERN.test(value)) return null;
+  return BigInt(value) > 0n ? value : null;
+}
+
+function linkedinJobTarget(url: URL): LinkedInJobTarget | null {
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (!isLinkedInHostname(hostname)) return null;
+
+  const pathname = url.pathname.toLowerCase();
+  const directMatch = pathname.match(/\/jobs\/view\/(?:[^/?]*-)?(\d{6,20})(?:\/|$)/);
+  const directJobId = validatedLinkedInJobId(directMatch?.[1] ?? null);
+  if (directJobId) {
+    return {
+      jobId: directJobId,
+      source: "direct",
+      scrapeUrl: `https://www.linkedin.com/jobs/view/${directJobId}`,
+    };
+  }
+
+  if (pathname.startsWith("/jobs/search")) {
+    const currentJobId = validatedLinkedInJobId(url.searchParams.get("currentJobId"));
+    if (!currentJobId) {
+      throw new JobScrapeError(
+        "This LinkedIn search URL does not contain a valid currentJobId. Open the specific job and copy its URL again.",
+        "INVALID_LINKEDIN_JOB_ID",
+      );
+    }
+    return {
+      jobId: currentJobId,
+      source: "search_results",
+      scrapeUrl: `https://www.linkedin.com/jobs/view/${currentJobId}`,
+    };
+  }
+
+  return null;
+}
+
+function responseMatchesLinkedInJob(page: ScrapedPageIdentity, jobId: string): boolean {
+  const identitySources = [
+    page.url,
+    page.metadata.canonicalUrl,
+    JSON.stringify(page.metadata.openGraph ?? {}),
+    JSON.stringify(page.metadata.jsonLd ?? []),
+  ].filter((value): value is string => Boolean(value));
+  const escapedJobId = jobId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const jobIdPattern = new RegExp(`(^|\\D)${escapedJobId}(\\D|$)`);
+  return identitySources.some((source) => jobIdPattern.test(source));
+}
+
+function validateExtractedJobText(
+  text: string,
+  partialResponse: boolean,
+  verifiedLinkedInJob: boolean,
+): void {
   const normalized = text.toLowerCase();
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   const searchResultSignals = [
@@ -107,7 +181,7 @@ function validateExtractedJobText(text: string, partialResponse: boolean): void 
     "you will be responsible",
   ].filter((signal) => normalized.includes(signal)).length;
 
-  if (searchResultSignals >= 2) {
+  if (!verifiedLinkedInJob && searchResultSignals >= 2) {
     throw new JobScrapeError(
       "This appears to be a job-search results page. Open the specific role and paste its direct job posting URL.",
       "DIRECT_JOB_URL_REQUIRED",
@@ -134,9 +208,11 @@ export async function scrapeJobDescription(
 ): Promise<string> {
   const startedAt = performance.now();
   let url: URL;
+  let linkedInTarget: LinkedInJobTarget | null = null;
   try {
     url = validatePublicJobUrl(value);
-    if (isSearchResultsUrl(url)) {
+    linkedInTarget = linkedinJobTarget(url);
+    if (!linkedInTarget && isSearchResultsUrl(url)) {
       throw new JobScrapeError(
         "This is a job-search results URL. Open the specific role and paste its direct job posting URL.",
         "DIRECT_JOB_URL_REQUIRED",
@@ -147,7 +223,11 @@ export async function scrapeJobDescription(
       stage: "context.validation",
       event: "job_url_validation",
       status: "succeeded",
-      details: { protocol: url.protocol },
+      details: {
+        protocol: url.protocol,
+        urlType: linkedInTarget ? `linkedin_${linkedInTarget.source}` : "direct",
+        linkedinJobId: linkedInTarget?.jobId ?? null,
+      },
     });
   } catch (error) {
     pipelineLog({
@@ -168,9 +248,13 @@ export async function scrapeJobDescription(
       stage: "context.scrape",
       event: "job_scrape",
       status: "started",
+      details: {
+        urlType: linkedInTarget ? `linkedin_${linkedInTarget.source}` : "direct",
+        linkedinJobId: linkedInTarget?.jobId ?? null,
+      },
     });
     const page = await client.web.scrape({
-      url: url.toString(),
+      url: linkedInTarget?.scrapeUrl ?? url.toString(),
       formats: { markdown: true },
       markdownParams: { includeImages: false, includeLinks: false },
       sharedParams: {
@@ -183,9 +267,40 @@ export async function scrapeJobDescription(
 
     if (!page.markdown.success || !page.markdown.data) {
       throw new JobScrapeError(
-        "Context.dev could not extract readable content from this job posting.",
-        "JOB_SCRAPE_FAILED",
+        linkedInTarget
+          ? "LinkedIn did not return a readable description for this job ID. The posting may be expired, private, or require authentication."
+          : "Context.dev could not extract readable content from this job posting.",
+        linkedInTarget ? "LINKEDIN_JOB_SCRAPE_FAILED" : "JOB_SCRAPE_FAILED",
       );
+    }
+
+    if (linkedInTarget && !responseMatchesLinkedInJob(page, linkedInTarget.jobId)) {
+      pipelineLog({
+        requestId,
+        stage: "context.linkedin_identity",
+        event: "linkedin_job_identity_check",
+        status: "rejected",
+        details: {
+          linkedinJobId: linkedInTarget.jobId,
+          source: linkedInTarget.source,
+          hasCanonicalUrl: Boolean(page.metadata.canonicalUrl),
+          hasStructuredData: Boolean(page.metadata.jsonLd?.length),
+        },
+      });
+      throw new JobScrapeError(
+        "LinkedIn returned content for a different or unidentified job. Open job ID " +
+          `${linkedInTarget.jobId} directly and try again.`,
+        "LINKEDIN_JOB_MISMATCH",
+      );
+    }
+    if (linkedInTarget) {
+      pipelineLog({
+        requestId,
+        stage: "context.linkedin_identity",
+        event: "linkedin_job_identity_check",
+        status: "succeeded",
+        details: { linkedinJobId: linkedInTarget.jobId, source: linkedInTarget.source },
+      });
     }
 
     const text = page.markdown.data
@@ -196,7 +311,7 @@ export async function scrapeJobDescription(
 
     const contentValidationStartedAt = performance.now();
     try {
-      validateExtractedJobText(text, page.isPartial === true);
+      validateExtractedJobText(text, page.isPartial === true, Boolean(linkedInTarget));
     } catch (error) {
       pipelineLog({
         requestId,
@@ -236,6 +351,7 @@ export async function scrapeJobDescription(
         extractedCharacters: text.length,
         partialResponse: page.isPartial === true,
         providerRequestId: page.request_id,
+        linkedinJobId: linkedInTarget?.jobId ?? null,
       },
     });
     return text;
@@ -250,8 +366,10 @@ export async function scrapeJobDescription(
     });
     if (error instanceof JobScrapeError) throw error;
     throw new JobScrapeError(
-      "Context.dev could not access the job posting. Confirm that the URL is public and still available.",
-      "JOB_SCRAPE_FAILED",
+      linkedInTarget
+        ? "Context.dev could not access this LinkedIn job. It may be expired, private, rate-limited, or blocked by LinkedIn. Try the direct /jobs/view/ URL."
+        : "Context.dev could not access the job posting. Confirm that the URL is public and still available.",
+      linkedInTarget ? "LINKEDIN_JOB_SCRAPE_FAILED" : "JOB_SCRAPE_FAILED",
     );
   }
 }
