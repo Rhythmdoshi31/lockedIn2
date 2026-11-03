@@ -310,14 +310,37 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   border-color: var(--red);
   transform: translateY(-2px);
 }
+.analyze-button:disabled {
+  cursor: wait;
+  opacity: 0.78;
+  transform: none;
+}
 .analyze-button span:last-child { font-size: 22px; }
-.privacy-note, .mock-note {
+.loading-mark {
+  animation: loading-rotation 800ms linear infinite;
+  border: 1px solid rgba(248, 244, 233, 0.35);
+  border-radius: 50%;
+  border-top-color: var(--paper);
+  height: 18px;
+  width: 18px;
+}
+.privacy-note, .result-note {
   color: var(--muted);
   font-size: 9px;
   letter-spacing: 0.08em;
   margin: 8px 0 0;
   text-align: center;
   text-transform: uppercase;
+}
+.form-error {
+  background: rgba(142, 46, 36, 0.08);
+  border-left: 2px solid var(--red);
+  color: #74271f;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 12px 0 0;
+  padding: 10px 12px;
 }
 
 .results-anchor { scroll-margin-top: 36px; }
@@ -376,6 +399,39 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   background: var(--ink);
   height: 1px;
 }
+.rubric-grid {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+.rubric-grid > div {
+  align-items: flex-end;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 14px 18px 0;
+}
+.rubric-grid > div + div {
+  border-left: 1px solid var(--line);
+  padding-left: 14px;
+}
+.rubric-grid span {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.rubric-grid strong {
+  color: var(--red);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 400;
+}
+.rubric-grid small {
+  color: var(--muted);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9px;
+  font-weight: 400;
+}
 .skills-block { padding: 38px 0 44px; }
 .skill-list {
   display: flex;
@@ -388,6 +444,48 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   font-family: Georgia, "Times New Roman", serif;
   font-size: 13px;
   padding: 9px 13px;
+}
+.skill-list > p {
+  color: var(--muted);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  margin: 0;
+}
+.missing-skills-block {
+  border-top: 1px solid var(--line);
+  padding: 34px 0 42px;
+}
+.missing-skill-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.missing-skill-list article {
+  border: 1px solid var(--line);
+  padding: 14px;
+}
+.missing-skill-list article > div {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.missing-skill-list strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  font-weight: 400;
+}
+.missing-skill-list span {
+  color: var(--red);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.missing-skill-list p {
+  color: #50584f;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 8px 0 0;
 }
 .report-grid {
   border-top: 1px solid var(--line);
@@ -410,13 +508,44 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   font-weight: 400;
   margin: 24px 0 12px;
 }
-.report-card p {
+.report-card p,
+.report-card li {
   color: #50584f;
   font-size: 12px;
   line-height: 1.65;
+}
+.report-card ul {
+  margin: 0;
+  padding-left: 16px;
+}
+.report-card li + li {
+  margin-top: 8px;
+}
+.section-feedback {
+  border-top: 1px solid var(--line);
+  padding: 38px 0 18px;
+}
+.section-feedback article {
+  align-items: baseline;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(100px, 0.35fr) 1fr;
+  padding: 18px 0;
+}
+.section-feedback h3 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  font-weight: 400;
   margin: 0;
 }
-.mock-note {
+.section-feedback p {
+  color: #50584f;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+.result-note {
   border-top: 1px solid var(--line);
   padding-top: 20px;
   text-align: left;
@@ -440,6 +569,9 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   }
   .header-note { display: none; }
   .report-grid { grid-template-columns: 1fr; }
+  .rubric-grid { grid-template-columns: repeat(2, 1fr); }
+  .rubric-grid > div:nth-child(3) { border-left: 0; }
+  .rubric-grid > div:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .report-card {
     border-bottom: 1px solid var(--line);
     padding: 26px 0;
@@ -477,6 +609,11 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
     flex-direction: column;
   }
   .score strong { font-size: 80px; }
+  .missing-skill-list { grid-template-columns: 1fr; }
+  .section-feedback article {
+    gap: 8px;
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 430px) {
@@ -496,4 +633,8 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+@keyframes loading-rotation {
+  to { transform: rotate(360deg); }
 }

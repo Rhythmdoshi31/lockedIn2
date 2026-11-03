@@ -17,34 +17,34 @@ Phase 2: Frontend
 
 Phase 3: Resume Processing
 
-* Implement IndexedDB persistence.
-* Restore uploaded resume after refresh.
-* Support replacing and removing resumes.
-* Extract PDF and DOCX text.
-* Validate file type and extracted content.
+* [x] Implement IndexedDB persistence.
+* [x] Restore uploaded resume after refresh.
+* [x] Support replacing and removing resumes.
+* [x] Extract PDF and DOCX text.
+* [x] Validate file type and extracted content.
 
 Phase 4: Job Scraping
 
-* Integrate Context.dev.
-* Fetch job posting content from the supplied URL.
-* Clean and normalize extracted content.
-* Handle scraping errors.
+* [x] Integrate Context.dev.
+* [x] Fetch job posting content from the supplied URL.
+* [x] Clean and normalize extracted content.
+* [x] Handle scraping errors.
 
 Phase 5: AI Analysis
 
-* Integrate selected LLM provider.
-* Extract structured resume information.
-* Extract job requirements.
-* Compare skills and experience.
-* Calculate score using a documented rubric.
-* Validate structured AI responses.
+* [x] Integrate Gemini using `@google/genai`.
+* [x] Extract structured resume information.
+* [x] Extract job requirements.
+* [x] Compare skills and experience.
+* [x] Calculate score using a documented rubric.
+* [x] Validate structured AI responses.
 
 Phase 6: Results
 
-* Connect backend analysis to frontend.
-* Display score, matching skills, gaps and recommendations.
-* Add loading, error and empty states.
-* Ensure responsive results layout.
+* [x] Connect backend analysis to frontend.
+* [x] Display score, matching skills, gaps and recommendations.
+* [x] Add loading, error and empty states.
+* [x] Ensure responsive results layout.
 
 Phase 7: Final Verification
 

@@ -24,7 +24,7 @@ Job Description Extraction
 
 AI Analysis
 
-* LLM provider: OpenAI or Gemini (final choice pending).
+* LLM provider: Gemini via `@google/genai`.
 * Structured JSON output for predictable analysis.
 * Server-side API integration.
 
@@ -47,3 +47,11 @@ Architecture Principles
 * Keep AI provider integration modular.
 * Validate all external and AI-generated data.
 * Keep implementation simple and maintainable.
+
+Scoring Rubric
+
+* Skills match — 45 points.
+* Relevant experience — 30 points.
+* Education and certifications — 10 points.
+* Overall role alignment — 15 points.
+* Gemini evaluates each category from résumé and job-posting evidence; the server calculates the final score from the validated category scores.

@@ -36,6 +36,15 @@ The backend should:
 5. Compare the two using a consistent scoring rubric.
 6. Return structured results.
 
+Scoring Rubric
+
+* Skills match: 45%.
+* Relevant experience and demonstrated outcomes: 30%.
+* Education and certifications when required by the role: 10%.
+* Overall responsibility, seniority and role alignment: 15%.
+
+The server calculates the overall score from validated category scores. Missing evidence must not be treated as proof that a user possesses a skill.
+
 Results
 
 Display:
