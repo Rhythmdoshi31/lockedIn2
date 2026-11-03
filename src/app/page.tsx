@@ -4,6 +4,7 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
+import { pipelineLog } from "@/lib/pipeline-log";
 import { deleteResume, loadResume, saveResume } from "@/lib/resume-store";
 import {
   analysisResultSchema,
@@ -22,6 +23,34 @@ function validateResume(file: File): string | null {
   }
   if (file.size === 0) return "The selected file is empty.";
   if (file.size > MAXIMUM_RESUME_SIZE) return "The résumé must be 10 MB or smaller.";
+  return null;
+}
+
+async function validateResumeStructure(file: File): Promise<string | null> {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  if (extension === "pdf") {
+    const header = new TextDecoder("ascii").decode(bytes.slice(0, 5));
+    const tail = new TextDecoder("ascii").decode(bytes.slice(Math.max(0, bytes.length - 4_096)));
+    if (header !== "%PDF-" || !tail.includes("%%EOF")) {
+      return "This PDF is incomplete or damaged. Re-export it from the original document and select it again.";
+    }
+  }
+
+  if (
+    extension === "docx" &&
+    !(
+      bytes[0] === 0x50 &&
+      bytes[1] === 0x4b &&
+      ((bytes[2] === 0x03 && bytes[3] === 0x04) ||
+        (bytes[2] === 0x05 && bytes[3] === 0x06) ||
+        (bytes[2] === 0x07 && bytes[3] === 0x08))
+    )
+  ) {
+    return "This DOCX file is incomplete or damaged. Re-save it as a DOCX and select it again.";
+  }
+
   return null;
 }
 
@@ -204,44 +233,122 @@ export default function Home() {
   const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const restoreRequestId = crypto.randomUUID();
     const savedJobUrl = window.localStorage.getItem(JOB_URL_STORAGE_KEY);
     if (savedJobUrl) queueMicrotask(() => setJobUrl(savedJobUrl));
 
-    loadResume()
-      .then((savedFile) => {
-        if (savedFile) setFile(savedFile);
+    loadResume(restoreRequestId)
+      .then(async (savedFile) => {
+        if (!savedFile) return;
+
+        const validationError = validateResume(savedFile) ?? await validateResumeStructure(savedFile);
+        if (validationError) {
+          pipelineLog({
+            requestId: restoreRequestId,
+            stage: "upload.validation",
+            event: "restored_resume_validation",
+            status: "rejected",
+            details: { sizeBytes: savedFile.size, reason: "invalid_stored_document" },
+          });
+          await deleteResume(restoreRequestId);
+          window.localStorage.removeItem(RESUME_NAME_STORAGE_KEY);
+          setError(`${validationError} The invalid saved copy was removed from this browser.`);
+          return;
+        }
+
+        pipelineLog({
+          requestId: restoreRequestId,
+          stage: "upload.validation",
+          event: "restored_resume_validation",
+          status: "succeeded",
+          details: { sizeBytes: savedFile.size, mimeType: savedFile.type || "unknown" },
+        });
+        setFile(savedFile);
       })
       .catch(() => setError("Your saved résumé could not be restored. Choose it again."))
       .finally(() => setIsRestoring(false));
   }, []);
 
   async function handleFileChange(selectedFile: File) {
+    const uploadRequestId = crypto.randomUUID();
+    const startedAt = performance.now();
+    pipelineLog({
+      requestId: uploadRequestId,
+      stage: "upload.validation",
+      event: "resume_selection",
+      status: "started",
+      details: { sizeBytes: selectedFile.size, mimeType: selectedFile.type || "unknown" },
+    });
     const validationError = validateResume(selectedFile);
     if (validationError) {
+      pipelineLog({
+        requestId: uploadRequestId,
+        stage: "upload.validation",
+        event: "resume_selection",
+        status: "rejected",
+        durationMs: Math.round(performance.now() - startedAt),
+        details: { reason: "file_metadata_validation" },
+      });
       setError(validationError);
       return;
     }
 
+    try {
+      const structureError = await validateResumeStructure(selectedFile);
+      if (structureError) {
+        pipelineLog({
+          requestId: uploadRequestId,
+          stage: "upload.validation",
+          event: "resume_structure_validation",
+          status: "rejected",
+          durationMs: Math.round(performance.now() - startedAt),
+          details: { reason: "invalid_document_structure" },
+        });
+        setError(structureError);
+        return;
+      }
+    } catch (validationFailure) {
+      pipelineLog({
+        requestId: uploadRequestId,
+        stage: "upload.validation",
+        event: "resume_structure_validation",
+        status: "failed",
+        durationMs: Math.round(performance.now() - startedAt),
+        error: validationFailure,
+      });
+      setError("The selected résumé could not be read by this browser. Select it again.");
+      return;
+    }
+
+    pipelineLog({
+      requestId: uploadRequestId,
+      stage: "upload.validation",
+      event: "resume_selection",
+      status: "succeeded",
+      durationMs: Math.round(performance.now() - startedAt),
+      details: { sizeBytes: selectedFile.size },
+    });
     setError(null);
     setResult(null);
     setFile(selectedFile);
     window.localStorage.setItem(RESUME_NAME_STORAGE_KEY, selectedFile.name);
 
     try {
-      await saveResume(selectedFile);
+      await saveResume(selectedFile, uploadRequestId);
     } catch {
       setError("The résumé is selected, but it could not be saved between visits.");
     }
   }
 
   async function handleRemoveFile() {
+    const deleteRequestId = crypto.randomUUID();
     setFile(null);
     setResult(null);
     setError(null);
     window.localStorage.removeItem(RESUME_NAME_STORAGE_KEY);
 
     try {
-      await deleteResume();
+      await deleteResume(deleteRequestId);
     } catch {
       setError("The saved résumé could not be removed from this browser.");
     }
@@ -249,9 +356,18 @@ export default function Home() {
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const requestId = crypto.randomUUID();
+    const requestStartedAt = performance.now();
     setError(null);
 
     if (!file) {
+      pipelineLog({
+        requestId,
+        stage: "upload.validation",
+        event: "analysis_preflight",
+        status: "rejected",
+        details: { reason: "missing_resume" },
+      });
       setError("Choose a PDF or DOCX résumé.");
       return;
     }
@@ -260,6 +376,13 @@ export default function Home() {
       const url = new URL(jobUrl);
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
     } catch {
+      pipelineLog({
+        requestId,
+        stage: "upload.validation",
+        event: "analysis_preflight",
+        status: "rejected",
+        details: { reason: "invalid_job_url" },
+      });
       setError("Enter a valid public job posting URL.");
       return;
     }
@@ -273,7 +396,18 @@ export default function Home() {
       formData.append("resume", file);
       formData.append("jobUrl", jobUrl);
 
-      const response = await fetch("/api/analyze", { method: "POST", body: formData });
+      pipelineLog({
+        requestId,
+        stage: "upload.api",
+        event: "analysis_submission",
+        status: "started",
+        details: { fileSizeBytes: file.size },
+      });
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+        headers: { "x-request-id": requestId },
+      });
       let payload: unknown;
       try {
         payload = await response.json();
@@ -283,17 +417,44 @@ export default function Home() {
 
       if (!response.ok) {
         const parsedError = analyzeErrorSchema.safeParse(payload);
+        pipelineLog({
+          requestId,
+          stage: "upload.api",
+          event: "analysis_submission",
+          status: "failed",
+          durationMs: Math.round(performance.now() - requestStartedAt),
+          details: {
+            httpStatus: response.status,
+            code: parsedError.success ? parsedError.data.error.code : "UNKNOWN_API_ERROR",
+          },
+        });
         throw new Error(
           parsedError.success ? parsedError.data.error.message : "The analysis could not be completed.",
         );
       }
 
       const parsedResult = analysisResultSchema.parse(payload);
+      pipelineLog({
+        requestId,
+        stage: "upload.api",
+        event: "analysis_submission",
+        status: "succeeded",
+        durationMs: Math.round(performance.now() - requestStartedAt),
+        details: { httpStatus: response.status, score: parsedResult.score },
+      });
       setResult(parsedResult);
       window.setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 180);
     } catch (requestError) {
+      pipelineLog({
+        requestId,
+        stage: "upload.pipeline",
+        event: "analysis_flow",
+        status: "failed",
+        durationMs: Math.round(performance.now() - requestStartedAt),
+        error: requestError,
+      });
       setError(
         requestError instanceof Error
           ? requestError.message

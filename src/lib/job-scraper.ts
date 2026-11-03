@@ -2,6 +2,8 @@ import { isIP } from "node:net";
 
 import ContextDev from "context.dev";
 
+import { pipelineLog } from "@/lib/pipeline-log";
+
 const MAXIMUM_JOB_TEXT_LENGTH = 60_000;
 
 export class JobScrapeError extends Error {
@@ -64,11 +66,42 @@ export function validatePublicJobUrl(value: string): URL {
   return url;
 }
 
-export async function scrapeJobDescription(value: string, apiKey: string): Promise<string> {
-  const url = validatePublicJobUrl(value);
+export async function scrapeJobDescription(
+  value: string,
+  apiKey: string,
+  requestId: string,
+): Promise<string> {
+  const startedAt = performance.now();
+  let url: URL;
+  try {
+    url = validatePublicJobUrl(value);
+    pipelineLog({
+      requestId,
+      stage: "context.validation",
+      event: "job_url_validation",
+      status: "succeeded",
+      details: { protocol: url.protocol },
+    });
+  } catch (error) {
+    pipelineLog({
+      requestId,
+      stage: "context.validation",
+      event: "job_url_validation",
+      status: "rejected",
+      error,
+    });
+    throw error;
+  }
+
   const client = new ContextDev({ apiKey, timeout: 70_000, maxRetries: 1 });
 
   try {
+    pipelineLog({
+      requestId,
+      stage: "context.scrape",
+      event: "job_scrape",
+      status: "started",
+    });
     const page = await client.web.scrape({
       url: url.toString(),
       formats: { markdown: true },
@@ -83,7 +116,7 @@ export async function scrapeJobDescription(value: string, apiKey: string): Promi
 
     if (!page.markdown.success || !page.markdown.data) {
       throw new JobScrapeError(
-        page.markdown.message ?? "The job posting could not be read.",
+        "Context.dev could not extract readable content from this job posting.",
         "JOB_SCRAPE_FAILED",
       );
     }
@@ -98,11 +131,31 @@ export async function scrapeJobDescription(value: string, apiKey: string): Promi
       throw new JobScrapeError("The job posting did not contain enough readable content.", "EMPTY_JOB_TEXT");
     }
 
+    pipelineLog({
+      requestId,
+      stage: "context.scrape",
+      event: "job_scrape",
+      status: "succeeded",
+      durationMs: Math.round(performance.now() - startedAt),
+      details: {
+        extractedCharacters: text.length,
+        partialResponse: page.isPartial === true,
+        providerRequestId: page.request_id,
+      },
+    });
     return text;
   } catch (error) {
+    pipelineLog({
+      requestId,
+      stage: "context.scrape",
+      event: "job_scrape",
+      status: error instanceof JobScrapeError ? "rejected" : "failed",
+      durationMs: Math.round(performance.now() - startedAt),
+      error,
+    });
     if (error instanceof JobScrapeError) throw error;
     throw new JobScrapeError(
-      "The job posting could not be accessed. Check the URL and try again.",
+      "Context.dev could not access the job posting. Confirm that the URL is public and still available.",
       "JOB_SCRAPE_FAILED",
     );
   }

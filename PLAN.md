@@ -48,12 +48,15 @@ Phase 6: Results
 
 Phase 7: Final Verification
 
+* [x] Reject and remove malformed resumes restored from IndexedDB.
+* [x] Add privacy-safe structured logging across the analysis pipeline.
+* [x] Verify `pdf-parse` API compatibility and use a documented `Buffer` input.
 * Test PDF and DOCX uploads.
 * Test persistence after refresh.
 * Test valid and invalid job URLs.
 * Test API failure scenarios.
-* Run lint and production build.
-* Fix issues and review final implementation.
+* [x] Run lint and production build.
+* [x] Fix issues and review final implementation.
 
 Working Rules
 

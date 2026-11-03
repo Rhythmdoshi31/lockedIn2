@@ -6,6 +6,7 @@ import {
   modelAnalysisSchema,
   type AnalysisResult,
 } from "@/schemas/analysis";
+import { pipelineLog } from "@/lib/pipeline-log";
 
 export class AnalysisError extends Error {
   constructor(
@@ -21,10 +22,23 @@ export async function analyzeResume(
   resumeText: string,
   jobText: string,
   apiKey: string,
+  requestId: string,
 ): Promise<AnalysisResult> {
+  const startedAt = performance.now();
   const ai = new GoogleGenAI({ apiKey });
 
   try {
+    pipelineLog({
+      requestId,
+      stage: "gemini.generate",
+      event: "structured_analysis",
+      status: "started",
+      details: {
+        model: "gemini-flash-latest",
+        resumeCharacters: resumeText.length,
+        jobCharacters: jobText.length,
+      },
+    });
     const response = await ai.models.generateContent({
       model: "gemini-flash-latest",
       contents: [
@@ -66,18 +80,70 @@ ${jobText}
     }
 
     const modelResult = modelAnalysisSchema.parse(JSON.parse(response.text));
+    pipelineLog({
+      requestId,
+      stage: "gemini.validation",
+      event: "structured_response_validation",
+      status: "succeeded",
+      details: {
+        matchingSkills: modelResult.matchingSkills.length,
+        missingSkills: modelResult.missingSkills.length,
+        recommendations: modelResult.recommendations.length,
+      },
+    });
+
+    const scoringStartedAt = performance.now();
     const score =
       modelResult.rubric.skills +
       modelResult.rubric.experience +
       modelResult.rubric.education +
       modelResult.rubric.roleAlignment;
 
-    return analysisResultSchema.parse({ ...modelResult, score });
+    const result = analysisResultSchema.parse({ ...modelResult, score });
+    pipelineLog({
+      requestId,
+      stage: "scoring",
+      event: "score_calculation",
+      status: "succeeded",
+      durationMs: Math.round(performance.now() - scoringStartedAt),
+      details: {
+        score,
+        skills: result.rubric.skills,
+        experience: result.rubric.experience,
+        education: result.rubric.education,
+        roleAlignment: result.rubric.roleAlignment,
+      },
+    });
+    pipelineLog({
+      requestId,
+      stage: "gemini.generate",
+      event: "structured_analysis",
+      status: "succeeded",
+      durationMs: Math.round(performance.now() - startedAt),
+      details: { model: "gemini-flash-latest" },
+    });
+    return result;
   } catch (error) {
+    pipelineLog({
+      requestId,
+      stage: error instanceof z.ZodError || error instanceof SyntaxError
+        ? "gemini.validation"
+        : "gemini.generate",
+      event: "structured_analysis",
+      status: "failed",
+      durationMs: Math.round(performance.now() - startedAt),
+      error,
+    });
     if (error instanceof AnalysisError) throw error;
     if (error instanceof z.ZodError || error instanceof SyntaxError) {
-      throw new AnalysisError("The analysis response was incomplete. Please try again.", "INVALID_AI_RESPONSE");
+      throw new AnalysisError(
+        "Gemini returned an incomplete analysis. Please run the analysis again.",
+        "INVALID_AI_RESPONSE",
+      );
     }
-    throw new AnalysisError("The analysis service is unavailable right now. Please try again.", "AI_REQUEST_FAILED");
+    throw new AnalysisError(
+      "Gemini could not complete the analysis right now. Please try again shortly.",
+      "AI_REQUEST_FAILED",
+    );
   }
 }
