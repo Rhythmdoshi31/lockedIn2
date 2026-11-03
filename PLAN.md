@@ -53,6 +53,7 @@ Phase 6: Results
 * [x] Add loading, error and empty states.
 * [x] Ensure responsive results layout.
 * [x] Prioritize missing requirements and actionable improvements in results.
+* [x] Refine the responsive editorial hero, controls and isometric background.
 
 Phase 7: Final Verification
 
@@ -65,6 +66,7 @@ Phase 7: Final Verification
 * Test API failure scenarios.
 * [x] Run lint and production build.
 * [x] Fix issues and review final implementation.
+* [x] Confirm provider keys remain server-only and local environment files are ignored.
 
 Working Rules
 

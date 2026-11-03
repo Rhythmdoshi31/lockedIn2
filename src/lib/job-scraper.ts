@@ -103,7 +103,7 @@ function isSearchResultsUrl(url: URL): boolean {
 
 function validatedLinkedInJobId(value: string | null): string | null {
   if (!value || !LINKEDIN_JOB_ID_PATTERN.test(value)) return null;
-  return BigInt(value) > 0n ? value : null;
+  return /^0+$/.test(value) ? null : value;
 }
 
 function linkedinJobTarget(url: URL): LinkedInJobTarget | null {

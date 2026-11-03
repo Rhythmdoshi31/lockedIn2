@@ -43,7 +43,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .geometric-line-art {
   height: 100%;
   inset: 0;
-  opacity: 0.08;
+  opacity: 0.045;
   pointer-events: none;
   position: fixed;
   width: 100%;
@@ -52,25 +52,18 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .geometric-line-art path {
   fill: none;
   stroke: #45564b;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1;
+  stroke-linecap: square;
+  stroke-linejoin: bevel;
+  stroke-width: 0.8;
   vector-effect: non-scaling-stroke;
 }
 .artwork {
-  bottom: -2vw;
+  bottom: 0;
   pointer-events: none;
   position: fixed;
-  right: -7vw;
-  width: min(64vw, 920px);
+  right: 0;
+  width: min(56vw, 900px);
   z-index: -2;
-}
-.artwork::before {
-  background: radial-gradient(ellipse, rgba(242, 237, 223, 0) 30%, var(--ivory) 74%);
-  content: "";
-  inset: -6%;
-  position: absolute;
-  z-index: 1;
 }
 .artwork img {
   display: block;
@@ -117,8 +110,9 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 
 .hero {
   align-items: start;
+  align-content: start;
   display: grid;
-  gap: clamp(22px, 3vh, 32px);
+  gap: clamp(18px, 2.5vh, 28px);
   min-height: calc(100svh - 72px);
   padding: clamp(18px, 3.5vh, 34px) clamp(24px, 5vw, 76px) 28px;
   position: relative;
@@ -189,6 +183,8 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .upload-dropzone, .file-selected, .url-field {
   background: rgba(248, 244, 233, 0.74);
   border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
   min-height: 58px;
 }
 .upload-dropzone {
@@ -237,6 +233,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .file-mark {
   align-items: flex-start;
   border: 1px solid var(--ink);
+  border-radius: 5px;
   display: flex;
   height: 34px;
   justify-content: flex-end;
@@ -294,6 +291,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   align-items: center;
   background: var(--ink);
   border: 1px solid var(--ink);
+  border-radius: 12px;
   color: var(--paper);
   cursor: pointer;
   display: flex;
@@ -335,6 +333,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .form-error {
   background: rgba(142, 46, 36, 0.08);
   border-left: 2px solid var(--red);
+  border-radius: 8px;
   color: #74271f;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 13px;
@@ -596,9 +595,9 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 @media (max-width: 980px) {
   .hero, .results-section { width: min(680px, 75vw); }
   .artwork {
-    opacity: 0.72;
-    right: -22vw;
-    width: 82vw;
+    opacity: 0.64;
+    right: 0;
+    width: min(64vw, 720px);
   }
   .header-note { display: none; }
   .gap-evidence { grid-template-columns: 1fr; }
@@ -631,12 +630,12 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   .hero h1 em { margin-left: 12px; }
   .hero-summary { max-width: 94%; }
   .artwork {
-    bottom: -1vw;
-    opacity: 0.22;
-    right: -44vw;
-    width: 155vw;
+    bottom: 0;
+    opacity: 0.2;
+    right: 0;
+    width: 100vw;
   }
-  .geometric-line-art { opacity: 0.7; }
+  .geometric-line-art { opacity: 0.055; }
   .analysis-form { backdrop-filter: blur(2px); }
   .results-section {
     min-height: auto;

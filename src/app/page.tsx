@@ -476,14 +476,12 @@ export default function Home() {
         aria-hidden="true"
       >
         <defs>
-          <pattern id="isometric-flow" width="320" height="184" patternUnits="userSpaceOnUse">
-            <path d="M-240 46 C-160 -46 -80 -46 0 46 S160 138 240 46 S400 -46 480 46 S640 138 720 46" />
-            <path d="M-240 138 C-160 46 -80 46 0 138 S160 230 240 138 S400 46 480 138 S640 230 720 138" />
-            <path d="M-160 0 C-80 92 0 92 80 0 S240 -92 320 0 S480 92 560 0" />
-            <path d="M-160 184 C-80 92 0 92 80 184 S240 276 320 184 S480 92 560 184" />
+          <pattern id="isometric-grid" width="180" height="104" patternUnits="userSpaceOnUse">
+            <path d="M0 52 90 0l90 52-90 52Z" />
+            <path d="M90 0v104M0 52l90 52 90-52" />
           </pattern>
         </defs>
-        <rect width="100%" height="100%" fill="url(#isometric-flow)" />
+        <rect width="100%" height="100%" fill="url(#isometric-grid)" />
       </svg>
       <div className="artwork" aria-hidden="true">
         <Image src="/grained-image-Photoroom.png" alt="" width={1264} height={843} priority />
