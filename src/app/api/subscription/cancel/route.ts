@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { createDodoClient } from "@/lib/dodo";
+import { createClient } from "@/lib/supabase/server";
+export async function POST(request:Request){const supabase=await createClient();const {data:{user}}=await supabase.auth.getUser();if(!user)return NextResponse.redirect(new URL("/auth",request.url));const {data}=await supabase.from("subscriptions").select("provider_subscription_id").eq("user_id",user.id).in("status",["active","renewed"]).order("created_at",{ascending:false}).limit(1).maybeSingle();if(data){await createDodoClient().subscriptions.update(data.provider_subscription_id,{cancel_at_next_billing_date:true});await supabase.from("subscriptions").update({cancel_at_next_billing_date:true}).eq("provider_subscription_id",data.provider_subscription_id);}return NextResponse.redirect(new URL("/profile",request.url),303);}

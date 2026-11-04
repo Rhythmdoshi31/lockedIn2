@@ -1,0 +1,3 @@
+"use client";
+import { useState } from "react";
+export function CheckoutButton({plan}:{plan:"starter"|"premium"}){const [busy,setBusy]=useState(false);return <button className="analyze-button" disabled={busy} onClick={async()=>{setBusy(true);const response=await fetch("/api/checkout",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({plan})});if(response.status===401){location.href="/auth?next=/pricing";return;}const body=await response.json();if(body.url)location.href=body.url;else setBusy(false);}}>{busy?"Opening checkout…":plan==="starter"?"Get 10 credits":"Choose Premium"}<span>→</span></button>}

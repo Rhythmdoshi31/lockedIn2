@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { pipelineLog } from "@/lib/pipeline-log";
+import { AuthNav } from "@/components/auth-nav";
 import { deleteResume, loadResume, saveResume } from "@/lib/resume-store";
 import {
   analysisResultSchema,
@@ -59,10 +60,13 @@ interface UploadFieldProps {
   restoring: boolean;
   onChange: (file: File) => void;
   onRemove: () => void;
+  savedResumes: Array<{id:string;file_name:string;created_at:string}>;
+  onSelectSaved: (id:string,fileName:string) => void;
 }
 
-function UploadField({ file, restoring, onChange, onRemove }: UploadFieldProps) {
+function UploadField({ file, restoring, onChange, onRemove, savedResumes, onSelectSaved }: UploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [open,setOpen]=useState(false);
 
   return (
     <div className="field-group">
@@ -90,9 +94,10 @@ function UploadField({ file, restoring, onChange, onRemove }: UploadFieldProps) 
             <strong>{file.name}</strong>
             <span>Saved locally and ready</span>
           </div>
-          <button className="text-button" type="button" onClick={() => inputRef.current?.click()}>
+          <button className="text-button" type="button" onClick={() => savedResumes.length?setOpen(!open):inputRef.current?.click()}>
             Replace
           </button>
+          {open&&<div className="resume-popover"><button type="button" onClick={()=>inputRef.current?.click()}>＋ Upload new</button>{savedResumes.map(resume=><button type="button" key={resume.id} onClick={()=>{setOpen(false);onSelectSaved(resume.id,resume.file_name)}}><strong>{resume.file_name}</strong><small>{new Date(resume.created_at).toLocaleDateString()}</small></button>)}</div>}
           <button
             className="remove-button"
             type="button"
@@ -118,7 +123,7 @@ function UploadField({ file, restoring, onChange, onRemove }: UploadFieldProps) 
   );
 }
 
-function AnalysisResults({ result }: { result: AnalysisResult }) {
+export function AnalysisResults({ result }: { result: AnalysisResult }) {
   const [enhancementDecisions, setEnhancementDecisions] = useState<Record<number, "accepted" | "rejected">>({});
   const [copiedEnhancement, setCopiedEnhancement] = useState<number | null>(null);
   const rubric = [
@@ -128,32 +133,10 @@ function AnalysisResults({ result }: { result: AnalysisResult }) {
     ["Role Alignment", result.rubric.roleAlignment, 15, result.rubricExplanations.roleAlignment.explanation],
   ] as const;
 
-  function exportAnalysis() {
-    const lines = [
-      `Gap Analysis: ${result.jobTitle}`,
-      result.companyName ? `Company: ${result.companyName}` : "",
-      `Match score: ${result.score}/100`,
-      "",
-      result.personalizedAssessment,
-      "",
-      "Missing requirements and improvements",
-      ...result.gaps.flatMap((gap) => [
-        `- [${gap.priority} · ${gap.status}] ${gap.requirement}`,
-        `  Job requires: ${gap.jobRequires}`,
-        `  Résumé evidence: ${gap.resumeEvidence}`,
-        `  Improvement: ${gap.improvement}`,
-        gap.suggestedWording ? `  Suggested wording: ${gap.suggestedWording}` : "",
-      ]),
-      "",
-      "Recommended next actions",
-      ...result.finalAssessment.nextActions.map((action, index) => `${index + 1}. ${action}`),
-    ].filter(Boolean);
-    const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "lockedin-gap-analysis.txt";
-    anchor.click();
-    URL.revokeObjectURL(url);
+  async function exportAnalysis(format:"pdf"|"docx") {
+    const response=await fetch("/api/download",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({format,result})});
+    if(response.status===401){window.location.href="/auth?reason=download";return;} if(!response.ok)return;
+    const url=URL.createObjectURL(await response.blob()); const anchor=document.createElement("a"); anchor.href=url; anchor.download=`lockedin-analysis.${format}`; anchor.click(); URL.revokeObjectURL(url);
   }
 
   async function copyEnhancement(index: number, text: string) {
@@ -318,7 +301,7 @@ function AnalysisResults({ result }: { result: AnalysisResult }) {
       </section>
 
       <section className="analysis-block final-assessment" aria-labelledby="final-title">
-        <div className="section-heading-row"><div><p className="section-label">Final assessment</p><h3 id="final-title">Your application outlook</h3></div><button type="button" className="export-button" onClick={exportAnalysis}>Download analysis ↓</button></div>
+        <div className="section-heading-row"><div><p className="section-label">Final assessment</p><h3 id="final-title">Your application outlook</h3></div><div className="download-actions"><button type="button" className="export-button" onClick={()=>exportAnalysis("pdf")}>PDF ↓</button><button type="button" className="export-button" onClick={()=>exportAnalysis("docx")}>Word ↓</button></div></div>
         <div className="assessment-pair"><div><span>Strongest area</span><p>{result.finalAssessment.strongestArea}</p></div><div><span>Biggest gap</span><p>{result.finalAssessment.biggestGap}</p></div></div>
         <div className="next-actions"><span>Three recommended actions</span><ol>{result.finalAssessment.nextActions.map((action) => <li key={action}>{action}</li>)}</ol></div>
       </section>
@@ -334,6 +317,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
+  const [savedResumes,setSavedResumes]=useState<Array<{id:string;file_name:string;created_at:string}>>([]);
+  const [resumeId,setResumeId]=useState<string|null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -371,6 +356,11 @@ export default function Home() {
       })
       .catch(() => setError("Your saved résumé could not be restored. Choose it again."))
       .finally(() => setIsRestoring(false));
+    fetch("/api/resumes").then(r=>r.json()).then(body=>setSavedResumes(body.resumes||[])).catch(()=>{});
+    if(new URLSearchParams(location.search).get("saveReport")==="1"){
+      const raw=localStorage.getItem("lockedin.pendingAnalysis");if(raw){try{const pending=JSON.parse(raw);fetch("/api/analyses",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(pending)}).then(response=>{if(response.ok)localStorage.removeItem("lockedin.pendingAnalysis")});}catch{/* ignore malformed local state */}}
+      history.replaceState(null,"","/");
+    }
   }, []);
 
   async function handleFileChange(selectedFile: File) {
@@ -435,18 +425,23 @@ export default function Home() {
     setError(null);
     setResult(null);
     setFile(selectedFile);
+    setResumeId(null);
     window.localStorage.setItem(RESUME_NAME_STORAGE_KEY, selectedFile.name);
 
     try {
       await saveResume(selectedFile, uploadRequestId);
+      const form=new FormData(); form.append("resume",selectedFile); const response=await fetch("/api/resumes",{method:"POST",body:form}); if(response.ok){const stored=await response.json();setResumeId(stored.id);setSavedResumes(current=>[stored,...current]);}
     } catch {
       setError("The résumé is selected, but it could not be saved between visits.");
     }
   }
 
+  async function handleSelectSaved(id:string,fileName:string){setError(null);const response=await fetch(`/api/resumes/${id}`);if(!response.ok){setError("That saved résumé could not be loaded.");return;}const blob=await response.blob();const storedFile=new File([blob],fileName,{type:blob.type});setFile(storedFile);setResumeId(id);await saveResume(storedFile,crypto.randomUUID());}
+
   async function handleRemoveFile() {
     const deleteRequestId = crypto.randomUUID();
     setFile(null);
+    setResumeId(null);
     setResult(null);
     setError(null);
     window.localStorage.removeItem(RESUME_NAME_STORAGE_KEY);
@@ -499,6 +494,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append("resume", file);
       formData.append("jobUrl", jobUrl);
+      if(resumeId)formData.append("resumeId",resumeId);
 
       pipelineLog({
         requestId,
@@ -532,6 +528,14 @@ export default function Home() {
             code: parsedError.success ? parsedError.data.error.code : "UNKNOWN_API_ERROR",
           },
         });
+        if (parsedError.success && parsedError.data.error.code === "SIGNUP_REQUIRED") {
+          window.location.href = "/auth?mode=signup&reason=limit";
+          return;
+        }
+        if (parsedError.success && parsedError.data.error.code === "PRICING_REQUIRED") {
+          window.location.href = "/pricing";
+          return;
+        }
         throw new Error(
           parsedError.success ? parsedError.data.error.message : "The analysis could not be completed.",
         );
@@ -547,6 +551,7 @@ export default function Home() {
         details: { httpStatus: response.status, score: parsedResult.score },
       });
       setResult(parsedResult);
+      window.localStorage.setItem("lockedin.pendingAnalysis", JSON.stringify({ result: parsedResult, jobUrl }));
       window.setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 180);
@@ -593,7 +598,7 @@ export default function Home() {
           <span className="wordmark-mark" aria-hidden="true">L</span>
           LockedIn
         </a>
-        <span className="header-note">Clarity before every application</span>
+        <AuthNav />
       </header>
       <section className="hero" id="top">
         <motion.div
@@ -621,6 +626,8 @@ export default function Home() {
             restoring={isRestoring}
             onChange={handleFileChange}
             onRemove={handleRemoveFile}
+            savedResumes={savedResumes}
+            onSelectSaved={handleSelectSaved}
           />
           <div className="field-group">
             <div className="field-heading">

@@ -69,6 +69,27 @@ Phase 7: Final Verification
 * [x] Fix issues and review final implementation.
 * [x] Confirm provider keys remain server-only and local environment files are ignored.
 
+Phase 8: Accounts, Persistence and Billing
+
+* [x] Add Supabase SSR authentication with Google and email/password flows.
+* [x] Add anonymous and registered usage limits with post-success credit deduction.
+* [x] Add private résumé storage, stored résumé selection and ownership policies.
+* [x] Persist complete analyses, job metadata and résumé associations.
+* [x] Add My Analyses, report reopening/deletion and profile pages.
+* [x] Replace text export with authenticated PDF and Word exports.
+* [x] Add Starter and Premium pricing with Dodo Checkout Sessions.
+* [x] Verify and idempotently process Dodo webhooks through a credit ledger.
+* [x] Add subscription history, cancellation and non-expiring credit balances.
+* [x] Add database migrations, RLS and private storage policies.
+* [x] Run the production build and fix implementation errors.
+
+Deployment follow-up
+
+* Apply `supabase/migrations/202611040001_accounts_billing.sql` to the configured Supabase project.
+* Create the Starter and Premium products in Dodo test mode and set their separate product IDs.
+* Register the deployed `/api/webhooks/dodo` URL in Dodo and subscribe to payment and subscription events.
+* Configure Supabase Auth site/redirect URLs and enable the Google provider.
+
 Working Rules
 
 * Complete one phase at a time.

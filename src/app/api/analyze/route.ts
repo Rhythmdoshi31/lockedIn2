@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 import { AnalysisError, analyzeResume } from "@/lib/gemini";
 import { JobScrapeError, scrapeJobDescription } from "@/lib/job-scraper";
 import { pipelineLog } from "@/lib/pipeline-log";
 import { extractResumeText, ResumeParseError } from "@/lib/resume-parser";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -49,6 +52,31 @@ export async function POST(request: Request) {
 
   const contextKey = process.env.CONTEXT_KEY;
   const geminiKey = process.env.GEMINI_KEY;
+  const cookieStore = await cookies();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  let admin: ReturnType<typeof createAdminClient> | null = null;
+  try { admin = createAdminClient(); } catch { /* configuration is handled below */ }
+
+  let anonymousId = cookieStore.get("lockedin_anonymous_id")?.value;
+  if (!user && (!anonymousId || !/^[0-9a-f-]{36}$/i.test(anonymousId))) anonymousId = crypto.randomUUID();
+
+  if (admin) {
+    if (user) {
+      const { data: profile } = await admin.from("profiles").select("free_credits,paid_credits").eq("id", user.id).single();
+      if (!profile || profile.free_credits + profile.paid_credits <= 0) {
+        return errorResponse(requestId, "PRICING_REQUIRED", "Your free analyses are used. Choose a plan to continue.", 402, requestStartedAt);
+      }
+    } else if (anonymousId) {
+      const { data: usage } = await admin.from("anonymous_usage").select("used_count").eq("anonymous_id", anonymousId).maybeSingle();
+      if ((usage?.used_count ?? 0) >= 3) {
+        const response = errorResponse(requestId, "SIGNUP_REQUIRED", "Create an account for 3 additional analyses.", 403, requestStartedAt);
+        response.cookies.set("lockedin_anonymous_id", anonymousId, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
+        response.cookies.set("lockedin_anon_used", "3", { sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
+        return response;
+      }
+    }
+  }
 
   if (!contextKey || !geminiKey) {
     pipelineLog({
@@ -72,6 +100,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("resume");
     const jobUrl = formData.get("jobUrl");
+    const suppliedResumeId = formData.get("resumeId");
     pipelineLog({
       requestId,
       stage: "api.validation",
@@ -131,7 +160,30 @@ export async function POST(request: Request) {
       durationMs: Math.round(performance.now() - requestStartedAt),
       details: { httpStatus: 200, score: result.score },
     });
-    return NextResponse.json(result, { headers: { "x-request-id": requestId } });
+    if (admin) {
+      if (user) {
+        let storedResumeId: string | null = null;
+        if(typeof suppliedResumeId==="string"&&/^[0-9a-f-]{36}$/i.test(suppliedResumeId)){const {data:owned}=await admin.from("resumes").select("id").eq("id",suppliedResumeId).eq("user_id",user.id).maybeSingle();storedResumeId=owned?.id??null;}
+        if(!storedResumeId){
+          const extension = file.name.split(".").pop()?.toLowerCase() || "bin"; const newResumeId=crypto.randomUUID(); const path=`${user.id}/${newResumeId}.${extension}`; const bytes=Buffer.from(await file.arrayBuffer()); const uploaded=await admin.storage.from("resumes").upload(path,bytes,{contentType:file.type,upsert:false});
+          if(!uploaded.error){const {data:resumeRow}=await admin.from("resumes").insert({id:newResumeId,user_id:user.id,file_name:file.name,storage_path:path,mime_type:file.type,size_bytes:file.size}).select("id").single();storedResumeId=resumeRow?.id??null;}
+        }
+        const { data: job } = await admin.from("job_descriptions").insert({ user_id: user.id, source_url: jobUrl, job_title: result.jobTitle, company_name: result.companyName || null }).select("id").single();
+        await admin.from("analyses").insert({ user_id: user.id, resume_id: storedResumeId, job_description_id: job?.id ?? null, job_title: result.jobTitle, company_name: result.companyName || null, match_score: result.score, result });
+        const { data: consumed } = await admin.rpc("consume_registered_credit", { p_user: user.id });
+        if (!consumed) return errorResponse(requestId, "PRICING_REQUIRED", "Your available analyses were used by another request. Choose a plan to continue.", 402, requestStartedAt);
+      } else if (anonymousId) {
+        const { data: consumed } = await admin.rpc("consume_anonymous_credit", { p_id: anonymousId });
+        if (!consumed) return errorResponse(requestId, "SIGNUP_REQUIRED", "Create an account for 3 additional analyses.", 403, requestStartedAt);
+      }
+    }
+    const response = NextResponse.json(result, { headers: { "x-request-id": requestId } });
+    if (!user && anonymousId) {
+      const used = Math.min(3, Number(cookieStore.get("lockedin_anon_used")?.value || 0) + 1);
+      response.cookies.set("lockedin_anonymous_id", anonymousId, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
+      response.cookies.set("lockedin_anon_used", String(used), { sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
+    }
+    return response;
   } catch (error) {
     if (error instanceof ResumeParseError) {
       return errorResponse(requestId, error.code, error.message, 400, requestStartedAt);

@@ -82,6 +82,7 @@ exception when unique_violation then return false; end $$;
 alter table profiles enable row level security; alter table resumes enable row level security;
 alter table job_descriptions enable row level security; alter table analyses enable row level security;
 alter table credit_ledger enable row level security; alter table payments enable row level security; alter table subscriptions enable row level security;
+alter table anonymous_usage enable row level security; alter table webhook_events enable row level security;
 create policy "own profile" on profiles for select using(auth.uid()=id);
 create policy "own resumes" on resumes for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
 create policy "own jobs" on job_descriptions for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
