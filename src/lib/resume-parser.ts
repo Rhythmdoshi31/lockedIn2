@@ -1,4 +1,5 @@
 import mammoth from "mammoth";
+import { CanvasFactory } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 
 import { pipelineLog } from "@/lib/pipeline-log";
@@ -132,9 +133,15 @@ export async function extractResumeText(file: File, requestId: string): Promise<
         stage: "resume.pdf.extract",
         event: "pdf_parse",
         status: "started",
-        details: { sizeBytes: buffer.byteLength, inputType: "Buffer", libraryVersion: "2.4.5" },
+        details: {
+          sizeBytes: buffer.byteLength,
+          inputType: "Buffer",
+          libraryVersion: "2.4.5",
+          canvasFactory: "pdf-parse/worker",
+          nodeMajorVersion: Number(process.versions.node.split(".")[0]),
+        },
       });
-      const parser = new PDFParse({ data: buffer });
+      const parser = new PDFParse({ data: buffer, CanvasFactory });
       try {
         const result = await parser.getText();
         extractedText = result.text;

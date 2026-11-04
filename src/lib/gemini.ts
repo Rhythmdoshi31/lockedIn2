@@ -17,6 +17,11 @@ const INITIAL_RETRY_DELAY_MS = 1_000;
 const RETRYABLE_STATUSES = new Set([429, 503]);
 const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{2,79}$/;
 const PRIORITY_ORDER = { Critical: 0, Important: 1, Optional: 2 } as const;
+const OUTPUT_TOKEN_LIMITS = {
+  requirements: 6_000,
+  comparison: 16_000,
+  enhancement: 10_000,
+} as const;
 const GEMINI_SCHEMA_KEYS = new Set([
   "$defs",
   "$ref",
@@ -213,14 +218,27 @@ ${resumeText}
 </resume_data>`;
 }
 
-async function generateWithFallback(
+function validationFailureDetails(error: unknown): Record<string, boolean | number | string | null> {
+  if (error instanceof SyntaxError) return { failureKind: "invalid_json" };
+  if (error instanceof z.ZodError) {
+    return {
+      failureKind: "schema_validation",
+      issueCount: error.issues.length,
+      issueCodes: [...new Set(error.issues.map((issue) => issue.code))].join(",").slice(0, 160),
+      issuePaths: error.issues.slice(0, 8).map((issue) => issue.path.join(".")).join(",").slice(0, 300),
+    };
+  }
+  return { failureKind: "unknown" };
+}
+
+async function generateWithFallback<T extends z.ZodType>(
   ai: GoogleGenAI,
   models: string[],
   prompt: string,
-  responseSchema: z.ZodType,
+  responseSchema: T,
   operation: "requirements" | "comparison" | "enhancement",
   requestId: string,
-): Promise<{ model: string; text: string }> {
+): Promise<{ model: string; data: z.infer<T> }> {
   let lastError: unknown;
   const compatibleSchema = geminiCompatibleSchema(responseSchema);
 
@@ -257,12 +275,56 @@ async function generateWithFallback(
             responseMimeType: "application/json",
             responseJsonSchema: compatibleSchema.schema,
             temperature: 0.1,
-            maxOutputTokens: 6_000,
+            maxOutputTokens: OUTPUT_TOKEN_LIMITS[operation],
           },
         });
+        const candidateCount = response.candidates?.length ?? 0;
+        const candidate = response.candidates?.[0];
+        const finishReason = candidate?.finishReason ?? "UNKNOWN";
+        const responseText = response.text ?? "";
+        const safetyBlocked = finishReason === "SAFETY" ||
+          (candidate?.safetyRatings?.some((rating) => rating.blocked) ?? false);
+        const responseDetails = {
+          model,
+          operation,
+          attempt,
+          candidateCount,
+          finishReason,
+          responseCharacters: responseText.length,
+          safetyBlocked,
+          outputTokenLimit: OUTPUT_TOKEN_LIMITS[operation],
+          candidateTokens: response.usageMetadata?.candidatesTokenCount ?? null,
+          thoughtTokens: response.usageMetadata?.thoughtsTokenCount ?? null,
+        };
+        pipelineLog({
+          requestId,
+          stage: `gemini.${operation}.response`,
+          event: "model_response_metadata",
+          status: finishReason === "STOP" ? "succeeded" : "rejected",
+          durationMs: Math.round(performance.now() - attemptStartedAt),
+          details: responseDetails,
+        });
 
-        if (!response.text) {
-          throw new AnalysisError("Gemini returned an empty analysis.", "EMPTY_AI_RESPONSE");
+        if (!responseText || finishReason !== "STOP") {
+          throw new AnalysisError(
+            safetyBlocked
+              ? "Gemini blocked the analysis response."
+              : "Gemini stopped before completing the structured analysis.",
+            safetyBlocked ? "AI_RESPONSE_BLOCKED" : "AI_RESPONSE_INCOMPLETE",
+          );
+        }
+        let data: z.infer<T>;
+        try {
+          data = responseSchema.parse(JSON.parse(responseText));
+        } catch (validationError) {
+          pipelineLog({
+            requestId,
+            stage: `gemini.${operation}.validation`,
+            event: "model_response_validation",
+            status: "failed",
+            details: { ...responseDetails, ...validationFailureDetails(validationError) },
+          });
+          throw validationError;
         }
         pipelineLog({
           requestId,
@@ -270,15 +332,17 @@ async function generateWithFallback(
           event: "model_request",
           status: "succeeded",
           durationMs: Math.round(performance.now() - attemptStartedAt),
-          details: { model, operation, attempt },
+          details: responseDetails,
         });
-        return { model, text: response.text };
+        return { model, data };
       } catch (error) {
         lastError = error;
         const status = statusFor(error);
         const retryable = status !== null && RETRYABLE_STATUSES.has(status);
         const unavailable = isModelUnavailable(error);
-        const shouldRetry = retryable && attempt < MAX_ATTEMPTS_PER_MODEL;
+        const invalidStructuredResponse = error instanceof SyntaxError || error instanceof z.ZodError ||
+          (error instanceof AnalysisError && ["AI_RESPONSE_INCOMPLETE", "EMPTY_AI_RESPONSE"].includes(error.code));
+        const shouldRetry = (retryable || invalidStructuredResponse) && attempt < MAX_ATTEMPTS_PER_MODEL;
         const delayMs = shouldRetry ? retryDelay(attempt) : 0;
 
         pipelineLog({
@@ -294,9 +358,12 @@ async function generateWithFallback(
             httpStatus: status,
             apiErrorKind: apiErrorKind(error),
             retryable,
+            invalidStructuredResponse,
             retryDelayMs: delayMs,
           },
-          error,
+          error: invalidStructuredResponse
+            ? new Error("Gemini returned incomplete or invalid structured data.")
+            : error,
         });
 
         if (shouldRetry) {
@@ -305,7 +372,7 @@ async function generateWithFallback(
         }
 
         const hasFallback = modelIndex < models.length - 1;
-        if (hasFallback && (retryable || unavailable)) {
+        if (hasFallback && (retryable || unavailable || invalidStructuredResponse)) {
           pipelineLog({
             requestId,
             stage: `gemini.${operation}.fallback`,
@@ -315,7 +382,7 @@ async function generateWithFallback(
               operation,
               fromModel: model,
               toModel: models[modelIndex + 1],
-              reason: unavailable ? "model_unavailable" : `http_${status}`,
+              reason: unavailable ? "model_unavailable" : invalidStructuredResponse ? "invalid_structured_response" : `http_${status}`,
             },
           });
           break;
@@ -325,6 +392,13 @@ async function generateWithFallback(
     }
   }
 
+  if (lastError instanceof SyntaxError || lastError instanceof z.ZodError ||
+    (lastError instanceof AnalysisError && lastError.code === "AI_RESPONSE_INCOMPLETE")) {
+    throw new AnalysisError(
+      "Gemini returned an incomplete analysis after retrying available models.",
+      "INVALID_AI_RESPONSE",
+    );
+  }
   throw lastError ?? new AnalysisError("No Gemini model was available.", "AI_REQUEST_FAILED");
 }
 
@@ -397,7 +471,7 @@ export async function analyzeResume(
       "requirements",
       requestId,
     );
-    const requirements = jobRequirementsSchema.parse(JSON.parse(requirementGeneration.text));
+    const requirements = requirementGeneration.data;
     const requiredCount = requirements.requirements.filter((item) => item.importance === "required").length;
     pipelineLog({
       requestId,
@@ -439,7 +513,7 @@ export async function analyzeResume(
       "comparison",
       requestId,
     );
-    const modelResult = modelAnalysisSchema.parse(JSON.parse(comparisonGeneration.text));
+    const modelResult = comparisonGeneration.data;
     validateGroundedGaps(modelResult, requirements);
     const sortedGaps = [...modelResult.gaps].sort(
       (left, right) => PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority],
@@ -474,7 +548,7 @@ export async function analyzeResume(
       "enhancement",
       requestId,
     );
-    const enhancementResult = resumeEnhancementSchema.parse(JSON.parse(enhancementGeneration.text));
+    const enhancementResult = enhancementGeneration.data;
     const resumeEnhancements = groundedEnhancements(enhancementResult.enhancements, resumeText);
     pipelineLog({
       requestId,

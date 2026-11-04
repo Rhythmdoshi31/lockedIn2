@@ -90,6 +90,14 @@ Deployment follow-up
 * Register the deployed `/api/webhooks/dodo` URL in Dodo and subscribe to payment and subscription events.
 * Configure Supabase Auth site/redirect URLs and enable the Google provider.
 
+Production analysis reliability
+
+* [x] Record Gemini candidate count, finish reason, response length and token usage without logging user content.
+* [x] Retry and fall back when Gemini truncates or returns invalid structured output.
+* [x] Use operation-specific output budgets for the larger comparison and enhancement schemas.
+* [x] Configure the documented `pdf-parse` server CanvasFactory for Vercel compatibility.
+* [x] Verify PDF.js code is absent from browser bundles and run the production build.
+
 Working Rules
 
 * Complete one phase at a time.
