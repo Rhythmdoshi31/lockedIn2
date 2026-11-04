@@ -16,6 +16,13 @@ import {
 const MAXIMUM_RESUME_SIZE = 10 * 1024 * 1024;
 const JOB_URL_STORAGE_KEY = "lockedin.jobUrl";
 const RESUME_NAME_STORAGE_KEY = "lockedin.resumeName";
+const ANALYSIS_STAGES = [
+  "Reading your résumé",
+  "Understanding the job description",
+  "Comparing skills and experience",
+  "Identifying evidence-backed gaps",
+  "Preparing your report",
+] as const;
 
 function validateResume(file: File): string | null {
   const extension = file.name.split(".").pop()?.toLowerCase();
@@ -551,6 +558,7 @@ export default function Home() {
         details: { httpStatus: response.status, score: parsedResult.score },
       });
       setResult(parsedResult);
+      window.dispatchEvent(new Event("lockedin:account-changed"));
       window.localStorage.setItem("lockedin.pendingAnalysis", JSON.stringify({ result: parsedResult, jobUrl }));
       window.setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -654,6 +662,11 @@ export default function Home() {
             <span>{isLoading ? "Analyzing your match…" : "Find my gaps"}</span>
             {isLoading ? <span className="loading-mark" aria-hidden="true" /> : <span aria-hidden="true">→</span>}
           </button>
+          {isLoading && <div className="analysis-progress" role="status" aria-live="polite">
+            <div className="indeterminate-progress" aria-hidden="true"><span /></div>
+            <p>Analysis in progress</p>
+            <ol>{ANALYSIS_STAGES.map(stage=><li key={stage}>{stage}</li>)}</ol>
+          </div>}
           <p className="privacy-note">Saved locally in this browser. Processed securely when you analyze.</p>
           <AnimatePresence>
             {error && (

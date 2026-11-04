@@ -98,6 +98,15 @@ Production analysis reliability
 * [x] Configure the documented `pdf-parse` server CanvasFactory for Vercel compatibility.
 * [x] Verify PDF.js code is absent from browser bundles and run the production build.
 
+Account experience refinement
+
+* [x] Move authentication to the left-side editorial panel and fit desktop viewports.
+* [x] Add consistent Back, account, analyses, profile and subscription navigation actions.
+* [x] Refresh authoritative credit counts immediately after successful analyses.
+* [x] Add privacy-safe indeterminate analysis-stage feedback.
+* [x] Tighten analysis history, profile, subscription and payment layouts.
+* [x] Improve pricing hierarchy and desktop/mobile viewport behavior.
+
 Working Rules
 
 * Complete one phase at a time.
