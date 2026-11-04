@@ -76,13 +76,13 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .site-header {
   align-items: center;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 22px clamp(24px, 5vw, 76px);
   position: relative;
   z-index: 5;
 }
 .global-header { min-height:78px; }
-.global-header>div:first-child { min-width:0; }
+.global-header-actions { align-items:center; display:flex; gap:14px; justify-content:flex-end; margin-left:auto; min-width:0; }
 .content-back { left:clamp(24px,5vw,76px); position:absolute; top:6px; z-index:8; }
 .wordmark {
   align-items: center;
@@ -1048,9 +1048,11 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   .site-shell { min-height:calc(100svh - 70px); }
   .site-header { gap:12px; padding:18px 20px; }
   .global-header { align-items:center; flex-wrap:nowrap; min-height:70px; }
-  .global-header .wordmark { margin-left:auto; }
-  .credit-count { display:none; }
-  .account-nav { gap:7px; margin-left:auto; max-width:100%; overflow-x:auto; padding-bottom:2px; }
+  .global-header-actions { gap:9px; width:100%; }
+  .global-header .wordmark { flex:0 0 auto; margin-left:0; }
+  .credit-count { font-size:8px; }
+  .account-nav { gap:6px; margin-left:auto; max-width:calc(100vw - 145px); overflow-x:auto; padding:2px 0; }
+  .account-nav .nav-button,.account-nav .plan-button,.account-nav .login-link { min-height:32px; padding:7px 9px; }
   .account-nav .nav-button,.account-nav .plan-button { white-space:nowrap; }
   .auth-layout { display:flex; flex-direction:column; height:auto; min-height:calc(100svh - 70px); overflow:visible; }
   .auth-spacer { height:150px; order:2; }
