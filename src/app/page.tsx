@@ -119,12 +119,59 @@ function UploadField({ file, restoring, onChange, onRemove }: UploadFieldProps) 
 }
 
 function AnalysisResults({ result }: { result: AnalysisResult }) {
+  const [enhancementDecisions, setEnhancementDecisions] = useState<Record<number, "accepted" | "rejected">>({});
+  const [copiedEnhancement, setCopiedEnhancement] = useState<number | null>(null);
   const rubric = [
-    ["Skills", result.rubric.skills, 45],
-    ["Experience", result.rubric.experience, 30],
-    ["Education", result.rubric.education, 10],
-    ["Role alignment", result.rubric.roleAlignment, 15],
+    ["Technical Skills", result.rubric.skills, 45, result.rubricExplanations.skills.explanation],
+    ["Experience", result.rubric.experience, 30, result.rubricExplanations.experience.explanation],
+    ["Education", result.rubric.education, 10, result.rubricExplanations.education.explanation],
+    ["Role Alignment", result.rubric.roleAlignment, 15, result.rubricExplanations.roleAlignment.explanation],
   ] as const;
+
+  function exportAnalysis() {
+    const lines = [
+      `Gap Analysis: ${result.jobTitle}`,
+      result.companyName ? `Company: ${result.companyName}` : "",
+      `Match score: ${result.score}/100`,
+      "",
+      result.personalizedAssessment,
+      "",
+      "Missing requirements and improvements",
+      ...result.gaps.flatMap((gap) => [
+        `- [${gap.priority} · ${gap.status}] ${gap.requirement}`,
+        `  Job requires: ${gap.jobRequires}`,
+        `  Résumé evidence: ${gap.resumeEvidence}`,
+        `  Improvement: ${gap.improvement}`,
+        gap.suggestedWording ? `  Suggested wording: ${gap.suggestedWording}` : "",
+      ]),
+      "",
+      "Recommended next actions",
+      ...result.finalAssessment.nextActions.map((action, index) => `${index + 1}. ${action}`),
+    ].filter(Boolean);
+    const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "lockedin-gap-analysis.txt";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyEnhancement(index: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    setCopiedEnhancement(index);
+    window.setTimeout(() => setCopiedEnhancement(null), 1_600);
+  }
 
   return (
     <motion.section
@@ -141,8 +188,9 @@ function AnalysisResults({ result }: { result: AnalysisResult }) {
       </div>
       <div className="results-intro">
         <div>
-          <p className="eyebrow">{result.jobTitle}</p>
-          <h2 id="results-title">{result.summaryTitle}</h2>
+          <p className="eyebrow">{result.companyName || result.summaryTitle}</p>
+          <h2 id="results-title">Gap Analysis: <em>{result.jobTitle}</em></h2>
+          <p className="results-assessment">{result.personalizedAssessment}</p>
         </div>
         <div className="score" aria-label={`Match score: ${result.score} out of 100`}>
           <strong>{result.score}</strong>
@@ -162,10 +210,10 @@ function AnalysisResults({ result }: { result: AnalysisResult }) {
         {result.gaps.length > 0 ? (
           <div className="gap-list">
             {result.gaps.map((gap, index) => (
-              <article className={`gap-card priority-${gap.priority.toLowerCase()}`} key={`${gap.requirement}-${index}`}>
+              <article className={`gap-card priority-${gap.priority.toLowerCase()} status-${gap.status}`} key={`${gap.requirement}-${index}`}>
                 <div className="gap-card-heading">
                   <span className="priority-badge">{gap.priority}</span>
-                  <span>{gap.category} · {gap.status}</span>
+                  <span className="finding-status">{gap.status}</span>
                 </div>
                 <h4>{gap.requirement}</h4>
                 <div className="gap-evidence">
@@ -177,11 +225,14 @@ function AnalysisResults({ result }: { result: AnalysisResult }) {
                     <span>Résumé shows</span>
                     <p>{gap.resumeEvidence}</p>
                   </div>
-                  <div className="gap-action">
-                    <span>How to improve</span>
-                    <p>{gap.improvement}</p>
-                  </div>
                 </div>
+                <div className="gap-context">
+                  <div><span>Why it matters</span><p>{gap.whyItMatters}</p></div>
+                  <div className="gap-action"><span>How to improve</span><p>{gap.improvement}</p></div>
+                </div>
+                {gap.suggestedWording && (
+                  <blockquote><span>Suggested résumé wording</span>{gap.suggestedWording}</blockquote>
+                )}
               </article>
             ))}
           </div>
@@ -190,35 +241,86 @@ function AnalysisResults({ result }: { result: AnalysisResult }) {
         )}
       </section>
 
-      <section className="score-detail" aria-label="Score breakdown">
-        <p className="section-label">Secondary view · score breakdown</p>
-        <div className="rubric-grid">
-          {rubric.map(([label, score, total]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong>{score}<small>/{total}</small></strong>
+      <section className="analysis-block match-breakdown" aria-labelledby="breakdown-title">
+        <div className="section-heading-row">
+          <div><p className="section-label">Match breakdown</p><h3 id="breakdown-title">Where the score comes from</h3></div>
+        </div>
+        <div className="progress-list">
+          {rubric.map(([label, score, total, explanation]) => (
+            <div className="progress-item" key={label}>
+              <div className="progress-heading"><strong>{label}</strong><span>{score}/{total}</span></div>
+              <div className="progress-track" aria-label={`${label}: ${score} out of ${total}`}>
+                <span style={{ width: `${Math.round((score / total) * 100)}%` }} />
+              </div>
+              <p>{explanation}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="supporting-evidence">
-        <div className="supporting-column">
-          <p className="section-label">Matching skills</p>
+      <section className="analysis-block" aria-labelledby="strengths-title">
+        <div className="section-heading-row"><div><p className="section-label">Competitive strengths</p><h3 id="strengths-title">Evidence that works in your favour</h3></div></div>
+        <div className="strength-card-grid">
+          {result.competitiveStrengths.map((strength) => (
+            <article className="strength-card" key={strength.capability}>
+              <h4>{strength.capability}</h4>
+              {strength.technologies.length > 0 && <p className="strength-tech">{strength.technologies.join(" · ")}</p>}
+              <div><span>Résumé evidence</span><p>{strength.resumeEvidence}</p></div>
+              <div><span>Relevance to this role</span><p>{strength.relevance}</p></div>
+            </article>
+          ))}
+        </div>
+        <details className="skills-disclosure">
+          <summary>View complete matching skill list <span>{result.matchingSkills.length}</span></summary>
           <div className="skill-list subdued">
-            {result.matchingSkills.length > 0 ? (
-              result.matchingSkills.map((skill) => <span key={skill}>{skill}</span>)
-            ) : (
-              <p>No directly matching skills were verified.</p>
-            )}
+            {result.matchingSkills.map((skill) => <span key={skill}>{skill}</span>)}
           </div>
+        </details>
+      </section>
+
+      <section className="analysis-block" aria-labelledby="studio-title">
+        <div className="section-heading-row"><div><p className="section-label">Resume enhancement studio</p><h3 id="studio-title">Sharper wording, same honest experience</h3></div></div>
+        <div className="enhancement-list">
+          {result.resumeEnhancements.length > 0 ? result.resumeEnhancements.map((item, index) => (
+            <article className={`enhancement-card decision-${enhancementDecisions[index] ?? "pending"}`} key={`${item.section}-${index}`}>
+              <div className="enhancement-heading"><span>{item.type.replaceAll("_", " ")}</span><strong>{item.section}</strong></div>
+              <div className="rewrite-pair">
+                <div><span>Original</span><p>{item.original}</p></div>
+                <div><span>AI-improved</span><p>{item.improved}</p></div>
+              </div>
+              <p className="rewrite-reason"><strong>Why this is stronger:</strong> {item.explanation}</p>
+              <div className="enhancement-actions">
+                <button type="button" onClick={() => copyEnhancement(index, item.improved)}>{copiedEnhancement === index ? "Copied" : "Copy"}</button>
+                <button type="button" onClick={() => setEnhancementDecisions((current) => ({ ...current, [index]: "accepted" }))}>Accept</button>
+                <button type="button" onClick={() => setEnhancementDecisions((current) => ({ ...current, [index]: "rejected" }))}>Reject</button>
+              </div>
+            </article>
+          )) : <p className="empty-analysis-note">No rewrite passed the evidence checks, so no wording suggestion is shown.</p>}
         </div>
-        <div className="supporting-column">
-          <p className="section-label">Evidence-backed strengths</p>
-          <ul className="strength-list">
-            {result.strengths.map((strength) => <li key={strength}>{strength}</li>)}
-          </ul>
+      </section>
+
+      <section className="analysis-block" aria-labelledby="keywords-title">
+        <div className="section-heading-row"><div><p className="section-label">Keyword optimization</p><h3 id="keywords-title">Use the JD’s language naturally</h3></div></div>
+        <div className="keyword-columns">
+          <div><h4>Already demonstrated</h4>{result.keywords.alreadyDemonstrated.map((item) => <article key={item.keyword}><strong>{item.keyword}</strong><p>{item.evidence}</p></article>)}</div>
+          <div><h4>Insufficiently demonstrated</h4>{result.keywords.insufficientlyDemonstrated.map((item) => <article key={item.keyword}><strong>{item.keyword}</strong><p>{item.evidence}</p><small>{item.suggestion}</small></article>)}</div>
+          <div><h4>Not found</h4>{result.keywords.notFound.map((item) => <article key={item.keyword}><strong>{item.keyword}</strong><p>{item.howToAddress}</p></article>)}</div>
         </div>
+      </section>
+
+      <section className="analysis-block" aria-labelledby="plan-title">
+        <div className="section-heading-row"><div><p className="section-label">Action plan</p><h3 id="plan-title">What to do next</h3></div></div>
+        <ol className="action-plan-list">
+          {result.actionPlan.map((item) => (
+            <li key={`${item.priority}-${item.action}`}><span>{item.priority.toString().padStart(2, "0")}</span><div><small>{item.type === "resume_wording" ? "Résumé wording" : "Skill or experience gap"}</small><h4>{item.action}</h4><p>{item.rationale}</p></div></li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="analysis-block final-assessment" aria-labelledby="final-title">
+        <div className="section-heading-row"><div><p className="section-label">Final assessment</p><h3 id="final-title">Your application outlook</h3></div><button type="button" className="export-button" onClick={exportAnalysis}>Download analysis ↓</button></div>
+        <div className="assessment-pair"><div><span>Strongest area</span><p>{result.finalAssessment.strongestArea}</p></div><div><span>Biggest gap</span><p>{result.finalAssessment.biggestGap}</p></div></div>
+        <div className="next-actions"><span>Three recommended actions</span><ol>{result.finalAssessment.nextActions.map((action) => <li key={action}>{action}</li>)}</ol></div>
       </section>
       <p className="result-note">Every finding is tied to a stated job requirement and checked against résumé evidence.</p>
     </motion.section>
