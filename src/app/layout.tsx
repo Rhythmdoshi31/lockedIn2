@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AccountProvider } from "@/components/account-provider";
+import { GlobalHeader } from "@/components/global-header";
 
 import "./globals.css";
 
@@ -15,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body><AccountProvider><GlobalHeader />{children}</AccountProvider></body>
     </html>
   );
 }

@@ -5,7 +5,6 @@ import { AnimatePresence, motion } from "motion/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { pipelineLog } from "@/lib/pipeline-log";
-import { AuthNav } from "@/components/auth-nav";
 import { deleteResume, loadResume, saveResume } from "@/lib/resume-store";
 import {
   analysisResultSchema,
@@ -96,7 +95,7 @@ function UploadField({ file, restoring, onChange, onRemove, savedResumes, onSele
       />
       {file ? (
         <div className="file-selected">
-          <div className="file-mark" aria-hidden="true"><span /></div>
+          <div className="file-mark" aria-hidden="true"><svg viewBox="0 0 32 38"><path d="M7 2.5h12l7 7V35.5H7z"/><path d="M19 2.5v8h7M11 17h11M11 22h11M11 27h7"/><text x="16" y="34">{file.name.toLowerCase().endsWith(".pdf")?"PDF":"DOC"}</text></svg></div>
           <div className="file-details">
             <strong>{file.name}</strong>
             <span>Saved locally and ready</span>
@@ -130,7 +129,7 @@ function UploadField({ file, restoring, onChange, onRemove, savedResumes, onSele
   );
 }
 
-export function AnalysisResults({ result }: { result: AnalysisResult }) {
+export function AnalysisResults({ result, resumeName }: { result: AnalysisResult; resumeName?: string | null }) {
   const [enhancementDecisions, setEnhancementDecisions] = useState<Record<number, "accepted" | "rejected">>({});
   const [copiedEnhancement, setCopiedEnhancement] = useState<number | null>(null);
   const rubric = [
@@ -141,7 +140,7 @@ export function AnalysisResults({ result }: { result: AnalysisResult }) {
   ] as const;
 
   async function exportAnalysis(format:"pdf"|"docx") {
-    const response=await fetch("/api/download",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({format,result})});
+    const response=await fetch("/api/download",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({format,result,resumeName})});
     if(response.status===401){window.location.href="/auth?reason=download";return;} if(!response.ok)return;
     const url=URL.createObjectURL(await response.blob()); const anchor=document.createElement("a"); anchor.href=url; anchor.download=`lockedin-analysis.${format}`; anchor.click(); URL.revokeObjectURL(url);
   }
@@ -260,12 +259,20 @@ export function AnalysisResults({ result }: { result: AnalysisResult }) {
             </article>
           ))}
         </div>
-        <details className="skills-disclosure">
-          <summary>View complete matching skill list <span>{result.matchingSkills.length}</span></summary>
-          <div className="skill-list subdued">
-            {result.matchingSkills.map((skill) => <span key={skill}>{skill}</span>)}
-          </div>
-        </details>
+        <div className="skills-disclosure-grid">
+          <details className="skills-disclosure">
+            <summary>View complete matched skills <span>{result.matchingSkills.length}</span></summary>
+            <div className="skill-list subdued">
+              {result.matchingSkills.map((skill) => <span key={skill}>{skill}</span>)}
+            </div>
+          </details>
+          <details className="skills-disclosure missing-skills-disclosure">
+            <summary>View missing skills <span>{result.gaps.filter(gap=>gap.category==="skill"&&gap.status==="missing").length}</span></summary>
+            <div className="missing-skill-list">
+              {result.gaps.filter(gap=>gap.category==="skill"&&gap.status==="missing").length>0?result.gaps.filter(gap=>gap.category==="skill"&&gap.status==="missing").map((gap,index)=><article key={`${gap.requirement}-${index}`}><strong>{gap.requirement}</strong><p>{gap.jobRequires}</p><small>{gap.improvement}</small></article>):<p>No missing skills were identified.</p>}
+            </div>
+          </details>
+        </div>
       </section>
 
       <section className="analysis-block" aria-labelledby="studio-title">
@@ -308,7 +315,7 @@ export function AnalysisResults({ result }: { result: AnalysisResult }) {
       </section>
 
       <section className="analysis-block final-assessment" aria-labelledby="final-title">
-        <div className="section-heading-row"><div><p className="section-label">Final assessment</p><h3 id="final-title">Your application outlook</h3></div><div className="download-actions"><button type="button" className="export-button" onClick={()=>exportAnalysis("pdf")}>PDF ↓</button><button type="button" className="export-button" onClick={()=>exportAnalysis("docx")}>Word ↓</button></div></div>
+        <div className="section-heading-row"><div><p className="section-label">Final assessment</p><h3 id="final-title">Your application outlook</h3></div><div className="download-actions"><button type="button" className="export-button pdf-download" onClick={()=>exportAnalysis("pdf")}><span className="download-icon" aria-hidden="true">⇩</span><span><strong>Download PDF</strong><small>Formatted report</small></span></button><button type="button" className="export-button docx-download" onClick={()=>exportAnalysis("docx")}><span className="download-icon" aria-hidden="true">⇩</span><span><strong>Download Word</strong><small>Editable .docx</small></span></button></div></div>
         <div className="assessment-pair"><div><span>Strongest area</span><p>{result.finalAssessment.strongestArea}</p></div><div><span>Biggest gap</span><p>{result.finalAssessment.biggestGap}</p></div></div>
         <div className="next-actions"><span>Three recommended actions</span><ol>{result.finalAssessment.nextActions.map((action) => <li key={action}>{action}</li>)}</ol></div>
       </section>
@@ -601,13 +608,6 @@ export default function Home() {
       <div className="artwork" aria-hidden="true">
         <Image src="/grained-image-Photoroom.png" alt="" width={1264} height={843} priority />
       </div>
-      <header className="site-header">
-        <a className="wordmark" href="#top" aria-label="LockedIn home">
-          <span className="wordmark-mark" aria-hidden="true">L</span>
-          LockedIn
-        </a>
-        <AuthNav />
-      </header>
       <section className="hero" id="top">
         <motion.div
           className="hero-copy"
@@ -684,7 +684,7 @@ export default function Home() {
         </motion.form>
       </section>
       <div className="results-anchor" ref={resultsRef}>
-        <AnimatePresence>{result && <AnalysisResults result={result} />}</AnimatePresence>
+        <AnimatePresence>{result && <AnalysisResults result={result} resumeName={file?.name} />}</AnimatePresence>
       </div>
     </main>
   );

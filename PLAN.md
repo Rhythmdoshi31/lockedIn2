@@ -107,6 +107,17 @@ Account experience refinement
 * [x] Tighten analysis history, profile, subscription and payment layouts.
 * [x] Improve pricing hierarchy and desktop/mobile viewport behavior.
 
+Persistent navigation and report polish
+
+* [x] Hoist account state and navigation into the persistent root layout.
+* [x] Deduplicate account refreshes and retain data between App Router navigations.
+* [x] Move page-level Back actions into interior content and right-align branding.
+* [x] Add deterministic generated avatars for accounts without profile images.
+* [x] Add branded PDF and Word headers, metadata, typography and footers.
+* [x] Promote PDF and Word downloads with explicit file-action styling.
+* [x] Add matching and missing skill disclosures with responsive detail views.
+* [x] Replace the generic résumé mark with an editorial document icon.
+
 Working Rules
 
 * Complete one phase at a time.
