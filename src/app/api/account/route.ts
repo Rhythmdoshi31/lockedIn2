@@ -17,15 +17,22 @@ export async function GET(request: Request) {
   }
   const { data, error } = await supabase.from("profiles").select("daily_free_used,daily_free_usage_date,paid_credits,plan,avatar_url,avatar_path,updated_at").eq("id", user.id).single();
   if (error || !data) {
-    const { data: fallback } = await supabase.from("profiles").select("paid_credits,plan,avatar_url").eq("id", user.id).maybeSingle();
+    const [{ data: fallback }, { count: usedToday }] = await Promise.all([
+      supabase.from("profiles").select("paid_credits,plan,avatar_url").eq("id", user.id).maybeSingle(),
+      supabase.from("credit_ledger").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("kind", "analysis_daily_free").gte("created_at", `${utcDate()}T00:00:00.000Z`),
+    ]);
+    const premium = fallback?.plan === "premium";
+    const dailyRemaining = premium ? 0 : Math.max(0, DAILY_FREE_LIMIT - (usedToday ?? 0));
+    const paidCredits = fallback?.paid_credits ?? 0;
     return accountResponse({
       authenticated: true,
-      credits: fallback?.paid_credits ?? 0,
-      paidCredits: fallback?.paid_credits ?? 0,
-      premium: fallback?.plan === "premium",
+      credits: dailyRemaining + paidCredits,
+      dailyRemaining,
+      paidCredits,
+      premium,
       userId: user.id,
       avatarUrl: fallback?.avatar_url ?? user.user_metadata?.avatar_url ?? null,
-      usageAvailable: false,
+      usageAvailable: true,
     });
   }
   const premium = data?.plan === "premium";

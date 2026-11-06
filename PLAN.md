@@ -139,6 +139,8 @@ Account settings
 * [x] Add résumé upload, replacement, download, deletion and default selection.
 * [x] Persist optional email preferences while keeping essential messages enabled.
 * [x] Add guarded account deletion with subscription, paid-credit and reauthentication checks.
+* [x] Align settings with the left-side application content area across responsive layouts.
+* [x] Refine profile-card spacing and promote Account Settings as a primary navigation action.
 
 Authentication reliability
 
