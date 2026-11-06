@@ -18,7 +18,7 @@ function AuthForm() {
   const [mode, setMode] = useState<AuthMode>(params.get("mode") === "signup" ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(params.get("reason") === "limit" ? "Create an account for 3 free analyses every day." : null);
+  const [message, setMessage] = useState<string | null>(params.get("deleted") === "1" ? "Your account and personal data were deleted." : params.get("reason") === "limit" ? "Create an account for 3 free analyses every day." : null);
   const [busy, setBusy] = useState(false);
   const [hasReport, setHasReport] = useState(false);
   const [saveReport, setSaveReport] = useState(safeNext.includes("saveReport=1"));

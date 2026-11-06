@@ -370,7 +370,7 @@ export default function Home() {
       })
       .catch(() => setError("Your saved résumé could not be restored. Choose it again."))
       .finally(() => setIsRestoring(false));
-    fetch("/api/resumes").then(r=>r.json()).then(body=>setSavedResumes(body.resumes||[])).catch(()=>{});
+    fetch("/api/resumes").then(r=>r.json()).then(async body=>{const available=body.resumes||[];setSavedResumes(available);const selected=available.find((resume:{id:string})=>resume.id===body.defaultResumeId);if(selected)await handleSelectSaved(selected.id,selected.file_name);}).catch(()=>{});
     if(new URLSearchParams(location.search).get("saveReport")==="1"){
       const raw=localStorage.getItem("lockedin.pendingAnalysis");if(raw){try{const pending=JSON.parse(raw);fetch("/api/analyses",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(pending)}).then(response=>{if(response.ok)localStorage.removeItem("lockedin.pendingAnalysis")});}catch{/* ignore malformed local state */}}
       history.replaceState(null,"","/");

@@ -132,6 +132,14 @@ Daily registered allowance
 * [x] Consume daily or paid usage atomically only after successful analysis.
 * [x] Refresh and display the authoritative daily remainder after analysis.
 
+Account settings
+
+* [x] Add editable personal details and private validated avatar storage.
+* [x] Add verified email changes, authenticated password changes and global sign-out.
+* [x] Add résumé upload, replacement, download, deletion and default selection.
+* [x] Persist optional email preferences while keeping essential messages enabled.
+* [x] Add guarded account deletion with subscription, paid-credit and reauthentication checks.
+
 Working Rules
 
 * Complete one phase at a time.
