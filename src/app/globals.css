@@ -136,6 +136,16 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .consent-row input { accent-color:var(--red); margin-top:2px; }
 .auth-switch { background:transparent; border:1px solid var(--line); border-radius:8px; cursor:pointer; display:block; font-size:9px; margin:16px auto 0; padding:8px 11px; text-transform:uppercase; }
 .auth-switch:hover { border-color:var(--red); color:var(--red); }
+.auth-switch:disabled { cursor:not-allowed; opacity:.55; transform:none; }
+.auth-confirmation { align-items:flex-start; }
+.auth-confirmation>p:not(.eyebrow) { margin-bottom:10px; }
+.confirmation-email { border-bottom:1px solid var(--line); color:var(--ink); display:block; font-family:Georgia,"Times New Roman",serif; font-size:clamp(18px,2vw,24px); font-weight:400; overflow-wrap:anywhere; padding-bottom:12px; width:100%; }
+.auth-confirmation .confirmation-instructions { font-family:Arial,Helvetica,sans-serif!important; font-size:12px; line-height:1.6!important; margin:14px 0 18px!important; max-width:470px; }
+.confirmation-login { margin-top:10px; width:100%; }
+.resend-area { text-align:center; width:100%; }
+.auth-feedback { font-family:Arial,Helvetica,sans-serif!important; font-size:11px; line-height:1.45!important; margin:10px 0 0!important; }
+.auth-feedback.success { color:#315b3f; }
+.auth-feedback.error { color:var(--red); }
 
 .hero {
   align-items: start;

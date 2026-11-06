@@ -118,6 +118,13 @@ Persistent navigation and report polish
 * [x] Add matching and missing skill disclosures with responsive detail views.
 * [x] Replace the generic résumé mark with an editorial document icon.
 
+Email verification experience
+
+* [x] Replace the signup form with a dedicated confirmation state when verification is required.
+* [x] Add resend feedback and a client-side cooldown.
+* [x] Route verified users back to a clear login success state.
+* [x] Defer signup credits until email confirmation while preserving confirmation-disabled and OAuth flows.
+
 Working Rules
 
 * Complete one phase at a time.
