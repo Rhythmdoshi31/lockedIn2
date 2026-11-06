@@ -47,3 +47,4 @@ as $$
 $$;
 
 revoke all on function public.purge_user_webhook_events(uuid) from public, anon, authenticated;
+grant execute on function public.purge_user_webhook_events(uuid) to service_role;
