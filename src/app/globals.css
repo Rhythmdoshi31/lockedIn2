@@ -113,6 +113,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .account-nav { align-items:center; display:flex; gap:9px; font-size:9px; letter-spacing:.09em; text-transform:uppercase; }
 .account-nav a { text-decoration:none; }
 .credit-count { color:var(--muted); white-space:nowrap; }
+.credit-count-compact { display:none; }
 .nav-button,.login-link,.plan-button { align-items:center; background:rgba(248,244,233,.74); border:1px solid var(--line); border-radius:8px; color:var(--ink); display:inline-flex; gap:7px; justify-content:center; min-height:34px; padding:8px 11px; transition:background 180ms ease,border-color 180ms ease,color 180ms ease,transform 180ms ease; }
 .nav-button:hover,.login-link:hover,.plan-button:hover { background:var(--paper); border-color:var(--red); color:var(--red); transform:translateY(-1px); }
 .back-button { cursor:pointer; font-size:9px; letter-spacing:.1em; text-transform:uppercase; }
@@ -1059,7 +1060,8 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   .global-header { align-items:center; flex-wrap:nowrap; min-height:70px; }
   .header-leading { gap:10px; }
   .global-header .wordmark { flex:0 0 auto; }
-  .credit-count { display:none; }
+  .credit-count-full { display:none; }
+  .credit-count-compact { display:inline; }
   .account-nav { gap:6px; justify-content:flex-end; margin-left:auto; min-width:0; overflow-x:auto; padding:2px 0; }
   .account-nav .nav-button,.account-nav .plan-button,.account-nav .login-link { min-height:32px; padding:7px 9px; }
   .account-nav .nav-button,.account-nav .plan-button,.account-nav .login-link { white-space:nowrap; }

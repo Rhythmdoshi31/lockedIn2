@@ -125,6 +125,13 @@ Email verification experience
 * [x] Route verified users back to a clear login success state.
 * [x] Defer signup credits until email confirmation while preserving confirmation-disabled and OAuth flows.
 
+Daily registered allowance
+
+* [x] Replace registered lifetime free credits with three UTC-daily analyses.
+* [x] Keep anonymous lifetime usage and purchased balances independent.
+* [x] Consume daily or paid usage atomically only after successful analysis.
+* [x] Refresh and display the authoritative daily remainder after analysis.
+
 Working Rules
 
 * Complete one phase at a time.

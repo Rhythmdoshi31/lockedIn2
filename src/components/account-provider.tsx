@@ -5,6 +5,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 export interface AccountSummary {
   authenticated: boolean;
   credits: number;
+  dailyRemaining?: number;
+  paidCredits?: number;
   premium: boolean;
   userId?: string | null;
   avatarUrl?: string | null;

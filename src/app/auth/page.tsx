@@ -18,7 +18,7 @@ function AuthForm() {
   const [mode, setMode] = useState<AuthMode>(params.get("mode") === "signup" ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(params.get("reason") === "limit" ? "Create an account to receive 3 additional analyses." : null);
+  const [message, setMessage] = useState<string | null>(params.get("reason") === "limit" ? "Create an account for 3 free analyses every day." : null);
   const [busy, setBusy] = useState(false);
   const [hasReport, setHasReport] = useState(false);
   const [saveReport, setSaveReport] = useState(safeNext.includes("saveReport=1"));
@@ -102,14 +102,14 @@ function AuthForm() {
   if (confirmationEmail || verificationState) {
     const verificationFailed = verified === "error";
     return <PageChrome><section className="auth-layout"><div className="auth-panel auth-confirmation"><p className="eyebrow">{verificationFailed ? "Confirmation link issue" : verified === "1" ? "Email verified" : "One final step"}</p><h1>{verificationFailed ? "We couldn’t verify that link." : verified === "1" ? "You’re verified." : "Check your inbox."}</h1>
-      {confirmationEmail ? <><p>We sent a confirmation link to:</p><strong className="confirmation-email">{confirmationEmail}</strong><p className="confirmation-instructions">Open the email and select the verification link. After verification, return here and log in to activate your account benefits.</p></> : <p>{verificationFailed ? "The confirmation link may have expired or already been used. Return to signup to request a fresh email, or log in if you have already verified." : "Your email address has been confirmed. Log in to access your account and additional analyses."}</p>}
+      {confirmationEmail ? <><p>We sent a confirmation link to:</p><strong className="confirmation-email">{confirmationEmail}</strong><p className="confirmation-instructions">Open the email and select the verification link. After verification, return here and log in to activate your daily free analyses.</p></> : <p>{verificationFailed ? "The confirmation link may have expired or already been used. Return to signup to request a fresh email, or log in if you have already verified." : "Your email address has been confirmed. Log in to access your account and daily free analyses."}</p>}
       <button className="analyze-button confirmation-login" type="button" onClick={showLogin}>Go to Login <span>→</span></button>
       {confirmationEmail && <div className="resend-area"><button className="auth-switch" type="button" disabled={resendBusy || cooldown > 0} onClick={resendConfirmation}>{resendBusy ? "Sending…" : cooldown > 0 ? `Resend available in ${cooldown}s` : "Resend confirmation email"}</button>{resendFeedback && <p className={`auth-feedback ${resendFeedback.tone}`}>{resendFeedback.text}</p>}</div>}
       {verificationFailed && <button className="auth-switch" type="button" onClick={() => { setMode("signup"); setMessage(null); setVerificationDismissed(true); history.replaceState(null, "", "/auth?mode=signup"); }}>Return to signup</button>}
     </div><div className="auth-spacer"/></section></PageChrome>;
   }
 
-  return <PageChrome><section className="auth-layout"><div className="auth-panel"><p className="eyebrow">Your application archive</p><h1>{mode === "login" ? "Welcome back." : "Create your account."}</h1><p>{mode === "signup" ? "Save analyses, keep résumés secure, and receive three additional analyses after email verification." : "Continue your considered approach to every application."}</p>
+  return <PageChrome><section className="auth-layout"><div className="auth-panel"><p className="eyebrow">Your application archive</p><h1>{mode === "login" ? "Welcome back." : "Create your account."}</h1><p>{mode === "signup" ? "Save analyses, keep résumés secure, and receive three free analyses every day after email verification." : "Continue your considered approach to every application."}</p>
     <button className="oauth-button" onClick={google} type="button">Continue with Google</button><div className="auth-divider"><span>or</span></div>
     <form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email"/></label><label>Password<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete={mode === "login" ? "current-password" : "new-password"}/></label>
     {mode === "signup" && hasReport && <label className="consent-row"><input type="checkbox" checked={saveReport} onChange={(event) => setSaveReport(event.target.checked)}/><span>Save my current anonymous report to this account</span></label>}

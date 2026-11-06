@@ -8,7 +8,7 @@ export function AuthNav() {
   const { account } = useAccount();
   return (
     <nav className="account-nav" aria-label="Account">
-      {account && !account.premium && <span className="credit-count">{account.credits} free {account.credits === 1 ? "analysis" : "analyses"} left</span>}
+      {account && !account.premium && <span className="credit-count"><span className="credit-count-full">{account.authenticated ? `${account.dailyRemaining ?? 0}/3 free analyses left today` : `${account.credits} free ${account.credits === 1 ? "analysis" : "analyses"} left`}</span><span className="credit-count-compact">{account.authenticated ? `${account.dailyRemaining ?? 0}/3 free today` : `${account.credits}/3 free`}</span></span>}
       {account?.authenticated ? <>
         <Link className={account.premium ? "plan-button premium-status" : "plan-button"} href={account.premium ? "/profile" : "/pricing"}>{account.premium ? "Premium" : "Subscribe"}</Link>
         <Link className="nav-button" href="/analyses">My Analyses</Link>

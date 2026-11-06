@@ -10,6 +10,9 @@ import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+const DAILY_FREE_LIMIT = 3;
+
+function utcDate() { return new Date().toISOString().slice(0, 10); }
 
 function requestIdFrom(request: Request): string {
   const suppliedRequestId = request.headers.get("x-request-id");
@@ -61,20 +64,23 @@ export async function POST(request: Request) {
   let anonymousId = cookieStore.get("lockedin_anonymous_id")?.value;
   if (!user && (!anonymousId || !/^[0-9a-f-]{36}$/i.test(anonymousId))) anonymousId = crypto.randomUUID();
 
-  if (admin) {
-    if (user) {
-      const { data: profile } = await admin.from("profiles").select("free_credits,paid_credits").eq("id", user.id).single();
-      if (!profile || profile.free_credits + profile.paid_credits <= 0) {
-        return errorResponse(requestId, "PRICING_REQUIRED", "Your free analyses are used. Choose a plan to continue.", 402, requestStartedAt);
-      }
-    } else if (anonymousId) {
-      const { data: usage } = await admin.from("anonymous_usage").select("used_count").eq("anonymous_id", anonymousId).maybeSingle();
-      if ((usage?.used_count ?? 0) >= 3) {
-        const response = errorResponse(requestId, "SIGNUP_REQUIRED", "Create an account for 3 additional analyses.", 403, requestStartedAt);
-        response.cookies.set("lockedin_anonymous_id", anonymousId, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
-        response.cookies.set("lockedin_anon_used", "3", { sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
-        return response;
-      }
+  if (!admin) return errorResponse(requestId, "SERVER_CONFIGURATION", "Usage limits are temporarily unavailable.", 500, requestStartedAt);
+
+  if (user) {
+    const { data: profile, error: profileError } = await admin.from("profiles").select("daily_free_used,daily_free_usage_date,paid_credits,plan").eq("id", user.id).single();
+    if (profileError || !profile) return errorResponse(requestId, "SERVER_CONFIGURATION", "Account usage could not be verified.", 500, requestStartedAt);
+    const usedToday = profile.daily_free_usage_date === utcDate() ? profile.daily_free_used : 0;
+    const dailyRemaining = profile.plan === "premium" ? 0 : Math.max(0, DAILY_FREE_LIMIT - usedToday);
+    if (dailyRemaining + profile.paid_credits <= 0) {
+      return errorResponse(requestId, "PRICING_REQUIRED", profile.plan === "premium" ? "Your available credits are used. Choose a plan to continue." : "Your free analyses for today are used. Choose a plan to continue now.", 402, requestStartedAt);
+    }
+  } else if (anonymousId) {
+    const { data: usage } = await admin.from("anonymous_usage").select("used_count").eq("anonymous_id", anonymousId).maybeSingle();
+    if ((usage?.used_count ?? 0) >= 3) {
+      const response = errorResponse(requestId, "SIGNUP_REQUIRED", "Create an account for 3 daily free analyses.", 403, requestStartedAt);
+      response.cookies.set("lockedin_anonymous_id", anonymousId, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
+      response.cookies.set("lockedin_anon_used", "3", { sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
+      return response;
     }
   }
 
@@ -152,16 +158,10 @@ export async function POST(request: Request) {
     const jobText = await scrapeJobDescription(jobUrl, contextKey, requestId);
     const result = await analyzeResume(resumeText, jobText, geminiKey, requestId);
 
-    pipelineLog({
-      requestId,
-      stage: "api.response",
-      event: "analysis_response",
-      status: "succeeded",
-      durationMs: Math.round(performance.now() - requestStartedAt),
-      details: { httpStatus: 200, score: result.score },
-    });
-    if (admin) {
-      if (user) {
+    if (user) {
+        const { data: consumed, error: consumeError } = await admin.rpc("consume_registered_credit", { p_user: user.id });
+        if (consumeError) return errorResponse(requestId, "SERVER_CONFIGURATION", "Account usage could not be updated.", 500, requestStartedAt);
+        if (!consumed) return errorResponse(requestId, "PRICING_REQUIRED", "Your daily allowance or paid credits were used by another request. Choose a plan to continue now.", 402, requestStartedAt);
         let storedResumeId: string | null = null;
         if(typeof suppliedResumeId==="string"&&/^[0-9a-f-]{36}$/i.test(suppliedResumeId)){const {data:owned}=await admin.from("resumes").select("id").eq("id",suppliedResumeId).eq("user_id",user.id).maybeSingle();storedResumeId=owned?.id??null;}
         if(!storedResumeId){
@@ -170,13 +170,18 @@ export async function POST(request: Request) {
         }
         const { data: job } = await admin.from("job_descriptions").insert({ user_id: user.id, source_url: jobUrl, job_title: result.jobTitle, company_name: result.companyName || null }).select("id").single();
         await admin.from("analyses").insert({ user_id: user.id, resume_id: storedResumeId, job_description_id: job?.id ?? null, job_title: result.jobTitle, company_name: result.companyName || null, match_score: result.score, result });
-        const { data: consumed } = await admin.rpc("consume_registered_credit", { p_user: user.id });
-        if (!consumed) return errorResponse(requestId, "PRICING_REQUIRED", "Your available analyses were used by another request. Choose a plan to continue.", 402, requestStartedAt);
       } else if (anonymousId) {
         const { data: consumed } = await admin.rpc("consume_anonymous_credit", { p_id: anonymousId });
         if (!consumed) return errorResponse(requestId, "SIGNUP_REQUIRED", "Create an account for 3 additional analyses.", 403, requestStartedAt);
       }
-    }
+    pipelineLog({
+      requestId,
+      stage: "api.response",
+      event: "analysis_response",
+      status: "succeeded",
+      durationMs: Math.round(performance.now() - requestStartedAt),
+      details: { httpStatus: 200, score: result.score },
+    });
     const response = NextResponse.json(result, { headers: { "x-request-id": requestId } });
     if (!user && anonymousId) {
       const used = Math.min(3, Number(cookieStore.get("lockedin_anon_used")?.value || 0) + 1);
