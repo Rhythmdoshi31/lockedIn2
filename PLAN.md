@@ -135,12 +135,11 @@ Daily registered allowance
 Account settings
 
 * [x] Add editable personal details and private validated avatar storage.
-* [x] Add verified email changes, authenticated password changes and global sign-out.
-* [x] Add résumé upload, replacement, download, deletion and default selection.
+* [x] Add authenticated password changes and logout.
 * [x] Persist optional email preferences while keeping essential messages enabled.
 * [x] Add guarded account deletion with subscription, paid-credit and reauthentication checks.
-* [x] Align settings with the left-side application content area across responsive layouts.
-* [x] Refine profile-card spacing and promote Account Settings as a primary navigation action.
+* [x] Consolidate account controls into the existing Profile page.
+* [x] Remove the separate settings page and default-résumé feature without deleting stored résumés.
 
 Authentication reliability
 
