@@ -5,10 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 
 const settingsSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("personal"), fullName: z.string().trim().min(1).max(80) }),
-  z.object({ action: z.literal("email"), email: z.string().trim().email().max(254) }),
   z.object({ action: z.literal("password"), currentPassword: z.string().min(8).max(200), password: z.string().min(8).max(200) }),
   z.object({ action: z.literal("notifications"), productUpdates: z.boolean(), featureAnnouncements: z.boolean(), promotionalEmails: z.boolean() }),
-  z.object({ action: z.literal("defaultResume"), resumeId: z.string().uuid().nullable() }),
 ]);
 
 export async function PATCH(request: Request) {
@@ -24,13 +22,6 @@ export async function PATCH(request: Request) {
     if (error) return NextResponse.json({ error: "Your name could not be saved." }, { status: 500 });
     await supabase.auth.updateUser({ data: { ...user.user_metadata, full_name: parsed.data.fullName } });
     return NextResponse.json({ message: "Personal information saved." });
-  }
-
-  if (parsed.data.action === "email") {
-    if (parsed.data.email.toLowerCase() === user.email?.toLowerCase()) return NextResponse.json({ error: "Enter a different email address." }, { status: 400 });
-    const redirect = `${new URL(request.url).origin}/auth/callback?next=${encodeURIComponent("/settings?email=confirmed")}`;
-    const { error } = await supabase.auth.updateUser({ email: parsed.data.email }, { emailRedirectTo: redirect });
-    return error ? NextResponse.json({ error: error.message }, { status: 400 }) : NextResponse.json({ message: "Verification emails have been sent. Follow Supabase’s instructions to confirm the change." });
   }
 
   if (parsed.data.action === "password") {
@@ -51,10 +42,5 @@ export async function PATCH(request: Request) {
     return error ? NextResponse.json({ error: "Notification preferences could not be saved." }, { status: 500 }) : NextResponse.json({ message: "Notification preferences saved." });
   }
 
-  if (parsed.data.resumeId) {
-    const { data: owned } = await supabase.from("resumes").select("id").eq("id", parsed.data.resumeId).eq("user_id", user.id).maybeSingle();
-    if (!owned) return NextResponse.json({ error: "That résumé is no longer available." }, { status: 404 });
-  }
-  const { error } = await admin.from("profiles").update({ default_resume_id: parsed.data.resumeId, updated_at: new Date().toISOString() }).eq("id", user.id);
-  return error ? NextResponse.json({ error: "The default résumé could not be updated." }, { status: 500 }) : NextResponse.json({ message: parsed.data.resumeId ? "Default résumé updated." : "Default résumé cleared." });
+  return NextResponse.json({ error: "Unsupported settings action." }, { status: 400 });
 }

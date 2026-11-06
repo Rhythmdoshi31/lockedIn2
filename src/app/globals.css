@@ -309,6 +309,20 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .credit-summary strong { color:var(--red); font-family:Georgia,"Times New Roman",serif; font-size:25px; font-weight:400; }
 .account-settings-link { align-items:center; align-self:flex-start; background:var(--ink); border:1px solid var(--ink); border-radius:8px; color:var(--paper); display:inline-flex; font-size:9px; gap:18px; justify-content:space-between; letter-spacing:.06em; margin-top:auto; min-width:154px; padding:9px 11px; text-decoration:none; text-transform:uppercase; transition:background 180ms ease,border-color 180ms ease,transform 180ms ease; }
 .account-settings-link:hover { background:var(--red); border-color:var(--red); transform:translateY(-1px); }
+.profile-edit-grid { align-items:stretch; }
+.profile-edit-grid .profile-information-card { min-height:270px; }
+.profile-avatar-editor { align-items:center; display:flex; gap:16px; margin-bottom:16px; width:100%; }
+.profile-avatar-editor>div { align-items:center; display:flex; flex-wrap:wrap; gap:8px; }
+.profile-avatar-editor small { color:var(--muted); display:block; flex-basis:100%; font-size:9px; }
+.profile-name-form { align-items:end; display:grid; gap:10px; grid-template-columns:minmax(0,1fr) auto; width:100%; }
+.profile-name-form label,.profile-password-form label { color:var(--muted); font-size:9px; letter-spacing:.12em; text-transform:uppercase; }
+.profile-name-form input,.profile-password-form input { background:rgba(255,252,244,.72); border:1px solid var(--line); border-radius:8px; color:var(--ink); display:block; margin-top:6px; padding:10px 11px; width:100%; }
+.profile-email { margin-top:10px!important; overflow-wrap:anywhere; }
+.profile-preferences-stack { display:grid; gap:14px; margin-top:18px; }
+.profile-password-form { align-items:end; display:grid; gap:10px; grid-template-columns:repeat(3,minmax(0,1fr)) auto; }
+.profile-logout-card { align-items:center; display:flex; justify-content:space-between; }
+.profile-logout-card h2 { font-family:Georgia,"Times New Roman",serif; font-size:22px; font-weight:400; margin:0; }
+.profile-logout-card p { color:var(--muted); font-size:11px; margin:4px 0 0; }
 .account-section { border-top:1px solid var(--line); margin-top:24px; padding-top:18px; }
 .account-section-heading { align-items:end; display:flex; justify-content:space-between; margin-bottom:5px; }
 .account-section-heading>div>span { color:var(--red); font-size:8px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
@@ -1133,6 +1147,9 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   .avatar-editor { align-items:flex-start; }
   .profile-grid article { min-height:0; padding:20px; }
   .account-settings-link { margin-top:18px; }
+  .profile-name-form,.profile-password-form { align-items:stretch; grid-template-columns:1fr; }
+  .profile-name-form .secondary-button,.profile-password-form .secondary-button { width:100%; }
+  .profile-logout-card { align-items:flex-start; flex-direction:column; gap:14px; }
   .site-shell { min-height:calc(100svh - 70px); }
   .site-header { gap:12px; padding:18px 20px; }
   .global-header { align-items:center; flex-wrap:nowrap; min-height:70px; }
