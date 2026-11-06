@@ -7,6 +7,7 @@ export interface AccountSummary {
   credits: number;
   dailyRemaining?: number;
   paidCredits?: number;
+  usageAvailable?: boolean;
   premium: boolean;
   userId?: string | null;
   avatarUrl?: string | null;

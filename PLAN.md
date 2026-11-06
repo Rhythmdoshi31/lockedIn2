@@ -140,6 +140,11 @@ Account settings
 * [x] Persist optional email preferences while keeping essential messages enabled.
 * [x] Add guarded account deletion with subscription, paid-credit and reauthentication checks.
 
+Authentication reliability
+
+* [x] Keep authenticated navbar identity authoritative when optional profile enrichment is unavailable.
+* [x] Prevent account-summary responses from being cached across users or sessions.
+
 Working Rules
 
 * Complete one phase at a time.
