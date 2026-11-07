@@ -89,6 +89,8 @@ Deployment follow-up
 * Create the Starter and Premium products in Dodo test mode and set their separate product IDs.
 * Register the deployed `/api/webhooks/dodo` URL in Dodo and subscribe to payment and subscription events.
 * Configure Supabase Auth site/redirect URLs and enable the Google provider.
+* Apply `supabase/migrations/202611070001_analysis_idempotency.sql` before deploying the updated analysis route.
+* Set `GEMINI_FALLBACK_MODEL`, `GEMINI_REQUEST_TIMEOUT_MS` and `GEMINI_MAX_INPUT_TOKENS` using `.env.example`.
 
 Production analysis reliability
 
@@ -97,6 +99,11 @@ Production analysis reliability
 * [x] Use operation-specific output budgets for the larger comparison and enhancement schemas.
 * [x] Configure the documented `pdf-parse` server CanvasFactory for Vercel compatibility.
 * [x] Verify PDF.js code is absent from browser bundles and run the production build.
+* [x] Retry Gemini rate limits, 5xx responses, network failures and timeouts with bounded backoff.
+* [x] Restrict fallback to availability failures and add one malformed-response recovery attempt.
+* [x] Reject oversized inputs without silent truncation and enforce prompt token budgets.
+* [x] Save validated reports and deduct usage in one request-idempotent transaction.
+* [x] Verify retries, fallback, malformed output, timeouts, limits and duplicate charging with focused tests.
 
 Account experience refinement
 
