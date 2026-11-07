@@ -2,6 +2,7 @@ import { ApiError, GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 
 import { pipelineLog } from "@/lib/pipeline-log";
+import { estimateInputTokens, isTemporaryTransportError, recoveryAction, type GeminiFailureKind } from "@/lib/gemini-reliability";
 import {
   analysisResultSchema,
   jobRequirementsSchema,
@@ -11,10 +12,11 @@ import {
 } from "@/schemas/analysis";
 
 const DEFAULT_PRIMARY_MODEL = "gemini-3.5-flash-lite";
-const DEFAULT_FALLBACK_MODELS = ["gemini-3.1-flash-lite"];
+const DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite";
 const MAX_ATTEMPTS_PER_MODEL = 3;
 const INITIAL_RETRY_DELAY_MS = 1_000;
-const RETRYABLE_STATUSES = new Set([429, 503]);
+const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
+const DEFAULT_MAX_INPUT_TOKENS = 60_000;
 const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{2,79}$/;
 const PRIORITY_ORDER = { Critical: 0, Important: 1, Optional: 2 } as const;
 const OUTPUT_TOKEN_LIMITS = {
@@ -49,11 +51,9 @@ export class AnalysisError extends Error {
 
 function configuredModels(): string[] {
   const primary = process.env.GEMINI_MODEL?.trim() || DEFAULT_PRIMARY_MODEL;
-  const fallbacks = process.env.GEMINI_FALLBACK_MODELS
-    ?.split(",")
-    .map((model) => model.trim())
-    .filter(Boolean) ?? DEFAULT_FALLBACK_MODELS;
-  const models = [...new Set([primary, ...fallbacks])];
+  const fallback = process.env.GEMINI_FALLBACK_MODEL?.trim() ||
+    process.env.GEMINI_FALLBACK_MODELS?.split(",")[0]?.trim() || DEFAULT_FALLBACK_MODEL;
+  const models = [...new Set([primary, fallback].filter(Boolean))];
 
   if (models.some((model) => !MODEL_ID_PATTERN.test(model))) {
     throw new AnalysisError(
@@ -66,6 +66,11 @@ function configuredModels(): string[] {
 
 function statusFor(error: unknown): number | null {
   return error instanceof ApiError ? error.status : null;
+}
+
+function isTemporaryError(error: unknown): boolean {
+  const status = statusFor(error);
+  return isTemporaryTransportError(error, status);
 }
 
 function isModelUnavailable(error: unknown): boolean {
@@ -241,6 +246,15 @@ async function generateWithFallback<T extends z.ZodType>(
 ): Promise<{ model: string; data: z.infer<T> }> {
   let lastError: unknown;
   const compatibleSchema = geminiCompatibleSchema(responseSchema);
+  const estimatedInputTokens = estimateInputTokens(prompt);
+  const maxInputTokens = Number(process.env.GEMINI_MAX_INPUT_TOKENS || DEFAULT_MAX_INPUT_TOKENS);
+  if (!Number.isInteger(maxInputTokens) || maxInputTokens < 10_000 || estimatedInputTokens > maxInputTokens) {
+    pipelineLog({requestId,stage:`gemini.${operation}.input`,event:"input_token_budget",status:"rejected",details:{operation,estimatedInputTokens,maxInputTokens}});
+    throw new AnalysisError(
+      "The résumé and job description exceed the configured analysis input limit. Nothing was truncated and no credit was used.",
+      "AI_INPUT_TOO_LARGE",
+    );
+  }
 
   pipelineLog({
     requestId,
@@ -251,11 +265,14 @@ async function generateWithFallback<T extends z.ZodType>(
       operation,
       schemaNodes: compatibleSchema.stats.nodeCount,
       strippedConstraints: compatibleSchema.stats.strippedConstraintCount,
+      estimatedInputTokens,
+      maxInputTokens,
     },
   });
 
   for (const [modelIndex, model] of models.entries()) {
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt += 1) {
+    let responseRecoveryUsed = false;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL + 1; attempt += 1) {
       const attemptStartedAt = performance.now();
       pipelineLog({
         requestId,
@@ -338,12 +355,17 @@ async function generateWithFallback<T extends z.ZodType>(
       } catch (error) {
         lastError = error;
         const status = statusFor(error);
-        const retryable = status !== null && RETRYABLE_STATUSES.has(status);
+        const retryable = isTemporaryError(error);
         const unavailable = isModelUnavailable(error);
         const invalidStructuredResponse = error instanceof SyntaxError || error instanceof z.ZodError ||
           (error instanceof AnalysisError && ["AI_RESPONSE_INCOMPLETE", "EMPTY_AI_RESPONSE"].includes(error.code));
-        const shouldRetry = (retryable || invalidStructuredResponse) && attempt < MAX_ATTEMPTS_PER_MODEL;
-        const delayMs = shouldRetry ? retryDelay(attempt) : 0;
+        const hasFallback = modelIndex < models.length - 1;
+        const failure: GeminiFailureKind = invalidStructuredResponse ? "malformed" : unavailable ? "unavailable" : retryable ? "temporary" : "permanent";
+        const action = recoveryAction({failure,temporaryAttempt:attempt,maxTemporaryAttempts:MAX_ATTEMPTS_PER_MODEL,responseRecoveryUsed,hasFallback});
+        const shouldRetry = action === "retry";
+        const shouldRecoverResponse = action === "recover";
+        if (shouldRecoverResponse) responseRecoveryUsed = true;
+        const delayMs = shouldRetry ? retryDelay(attempt) : shouldRecoverResponse ? 250 : 0;
 
         pipelineLog({
           requestId,
@@ -359,6 +381,7 @@ async function generateWithFallback<T extends z.ZodType>(
             apiErrorKind: apiErrorKind(error),
             retryable,
             invalidStructuredResponse,
+            recoveryAttempt: shouldRecoverResponse,
             retryDelayMs: delayMs,
           },
           error: invalidStructuredResponse
@@ -366,13 +389,19 @@ async function generateWithFallback<T extends z.ZodType>(
             : error,
         });
 
-        if (shouldRetry) {
+        if (shouldRetry || shouldRecoverResponse) {
           await wait(delayMs);
           continue;
         }
 
-        const hasFallback = modelIndex < models.length - 1;
-        if (hasFallback && (retryable || unavailable || invalidStructuredResponse)) {
+        if (invalidStructuredResponse) {
+          throw new AnalysisError(
+            "Gemini returned an incomplete report after one recovery attempt. No credit was used.",
+            "INVALID_AI_RESPONSE",
+          );
+        }
+
+        if (action === "fallback") {
           pipelineLog({
             requestId,
             stage: `gemini.${operation}.fallback`,
@@ -382,7 +411,7 @@ async function generateWithFallback<T extends z.ZodType>(
               operation,
               fromModel: model,
               toModel: models[modelIndex + 1],
-              reason: unavailable ? "model_unavailable" : invalidStructuredResponse ? "invalid_structured_response" : `http_${status}`,
+              reason: unavailable ? "model_unavailable" : status === null ? "network_or_timeout" : `http_${status}`,
             },
           });
           break;
@@ -454,7 +483,11 @@ export async function analyzeResume(
 
   try {
     const models = configuredModels();
-    const ai = new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts: 1 } } });
+    const timeout = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS || DEFAULT_REQUEST_TIMEOUT_MS);
+    if (!Number.isFinite(timeout) || timeout < 5_000 || timeout > 90_000) {
+      throw new AnalysisError("GEMINI_REQUEST_TIMEOUT_MS must be between 5000 and 90000.", "INVALID_AI_CONFIGURATION");
+    }
+    const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout, retryOptions: { attempts: 1 } } });
     pipelineLog({
       requestId,
       stage: "gemini.requirements",

@@ -25,8 +25,7 @@ function normalizeText(text: string): string {
     .replace(/\r\n?/g, "\n")
     .replace(/[\t ]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, MAXIMUM_TEXT_LENGTH);
+    .trim();
 }
 
 function hasPdfSignature(buffer: Buffer): boolean {
@@ -217,6 +216,12 @@ export async function extractResumeText(file: File, requestId: string): Promise<
   }
 
   const normalizedText = normalizeText(extractedText);
+  if (normalizedText.length > MAXIMUM_TEXT_LENGTH) {
+    throw new ResumeParseError(
+      "This résumé contains too much text to analyse safely. Shorten it to 60,000 characters or fewer; nothing was truncated and no credit was used.",
+      "RESUME_TEXT_TOO_LONG",
+    );
+  }
   if (normalizedText.length < MINIMUM_TEXT_LENGTH) {
     pipelineLog({
       requestId,

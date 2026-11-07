@@ -306,8 +306,14 @@ export async function scrapeJobDescription(
     const text = page.markdown.data
       .replace(/\u0000/g, "")
       .replace(/\n{3,}/g, "\n\n")
-      .trim()
-      .slice(0, MAXIMUM_JOB_TEXT_LENGTH);
+      .trim();
+
+    if (text.length > MAXIMUM_JOB_TEXT_LENGTH) {
+      throw new JobScrapeError(
+        "This page contains too much unrelated content to analyse safely. Use the direct job-posting URL; nothing was truncated and no credit was used.",
+        "JOB_DESCRIPTION_TOO_LONG",
+      );
+    }
 
     const contentValidationStartedAt = performance.now();
     try {
