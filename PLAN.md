@@ -140,6 +140,7 @@ Account settings
 * [x] Add guarded account deletion with subscription, paid-credit and reauthentication checks.
 * [x] Consolidate account controls into the existing Profile page.
 * [x] Remove the separate settings page and default-résumé feature without deleting stored résumés.
+* [x] Refine the Profile Information and Current Plan cards with compact, responsive account controls and usage hierarchy.
 
 Authentication reliability
 
