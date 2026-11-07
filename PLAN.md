@@ -91,6 +91,7 @@ Deployment follow-up
 * Configure Supabase Auth site/redirect URLs and enable the Google provider.
 * Apply `supabase/migrations/202611070001_analysis_idempotency.sql` before deploying the updated analysis route.
 * Apply `supabase/migrations/202611070002_analysis_usage_compatibility.sql` to projects where the idempotency migration was applied before daily usage columns.
+* Apply `supabase/migrations/202611070003_dodo_webhook_reliability.sql` before deploying the transactional Dodo webhook route.
 * Set `GEMINI_FALLBACK_MODEL`, `GEMINI_REQUEST_TIMEOUT_MS` and `GEMINI_MAX_INPUT_TOKENS` using `.env.example`.
 
 Production analysis reliability
@@ -105,6 +106,14 @@ Production analysis reliability
 * [x] Reject oversized inputs without silent truncation and enforce prompt token budgets.
 * [x] Save validated reports and deduct usage in one request-idempotent transaction.
 * [x] Verify retries, fallback, malformed output, timeouts, limits and duplicate charging with focused tests.
+
+Dodo webhook reliability
+
+* [x] Process successful and failed payments through one atomic, idempotent database RPC.
+* [x] Grant exactly 10 Starter or 80 Premium credits once per provider payment ID.
+* [x] Order subscription lifecycle updates by provider event timestamp and preserve scheduled-cancellation access.
+* [x] Return retryable errors for database failures and distinguish configuration from signature errors.
+* [x] Verify payment, duplicate, retry, metadata and subscription-ordering safeguards with focused tests.
 
 Account experience refinement
 
