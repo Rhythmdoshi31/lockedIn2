@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import DodoPayments from "dodopayments";
 
 import { creditsForPayment, shouldApplyProviderEvent, webhookIdentity } from "../src/lib/dodo-webhook-policy.ts";
 
 const userId="123e4567-e89b-42d3-a456-426614174000";
+
+test("Dodo SDK rejects an invalid webhook signature",()=>{
+  const client=new DodoPayments({bearerToken:"test_key",environment:"test_mode"});
+  assert.throws(()=>client.webhooks.unwrap("{}",{headers:{"webhook-id":"evt_test","webhook-timestamp":"1","webhook-signature":"invalid"},key:"test_webhook_key"}));
+});
 
 test("Starter and Premium successful payments grant exactly 10 and 80 credits",()=>{
   assert.equal(creditsForPayment("starter",true),10);
