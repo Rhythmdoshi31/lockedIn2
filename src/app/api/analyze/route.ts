@@ -9,14 +9,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 240;
 const DAILY_FREE_LIMIT = 3;
 
 function utcDate() { return new Date().toISOString().slice(0, 10); }
 
 function requestIdFrom(request: Request): string {
   const suppliedRequestId = request.headers.get("x-request-id");
-  return suppliedRequestId && /^[a-zA-Z0-9_-]{8,80}$/.test(suppliedRequestId)
+  return suppliedRequestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedRequestId)
     ? suppliedRequestId
     : crypto.randomUUID();
 }
@@ -62,27 +62,11 @@ export async function POST(request: Request) {
   try { admin = createAdminClient(); } catch { /* configuration is handled below */ }
 
   let anonymousId = cookieStore.get("lockedin_anonymous_id")?.value;
-  if (!user && (!anonymousId || !/^[0-9a-f-]{36}$/i.test(anonymousId))) anonymousId = crypto.randomUUID();
+  if (!user && (!anonymousId || !/^[0-9a-f-]{36}$/i.test(anonymousId))) anonymousId = requestId;
+  const ownerKey = user ? `user:${user.id}` : `anon:${anonymousId}`;
+  let requestClaimed = false;
 
   if (!admin) return errorResponse(requestId, "SERVER_CONFIGURATION", "Usage limits are temporarily unavailable.", 500, requestStartedAt);
-
-  if (user) {
-    const { data: profile, error: profileError } = await admin.from("profiles").select("daily_free_used,daily_free_usage_date,paid_credits,plan").eq("id", user.id).single();
-    if (profileError || !profile) return errorResponse(requestId, "SERVER_CONFIGURATION", "Account usage could not be verified.", 500, requestStartedAt);
-    const usedToday = profile.daily_free_usage_date === utcDate() ? profile.daily_free_used : 0;
-    const dailyRemaining = profile.plan === "premium" ? 0 : Math.max(0, DAILY_FREE_LIMIT - usedToday);
-    if (dailyRemaining + profile.paid_credits <= 0) {
-      return errorResponse(requestId, "PRICING_REQUIRED", profile.plan === "premium" ? "Your available credits are used. Choose a plan to continue." : "Your free analyses for today are used. Choose a plan to continue now.", 402, requestStartedAt);
-    }
-  } else if (anonymousId) {
-    const { data: usage } = await admin.from("anonymous_usage").select("used_count").eq("anonymous_id", anonymousId).maybeSingle();
-    if ((usage?.used_count ?? 0) >= 3) {
-      const response = errorResponse(requestId, "SIGNUP_REQUIRED", "Create an account for 3 daily free analyses.", 403, requestStartedAt);
-      response.cookies.set("lockedin_anonymous_id", anonymousId, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
-      response.cookies.set("lockedin_anon_used", "3", { sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 31_536_000, path: "/" });
-      return response;
-    }
-  }
 
   if (!contextKey || !geminiKey) {
     pipelineLog({
@@ -154,26 +138,56 @@ export async function POST(request: Request) {
       status: "succeeded",
       details: { fileSizeBytes: file.size, mimeType: file.type || "unknown" },
     });
+
+    const { data: claim, error: claimError } = await admin.rpc("claim_analysis_request", { p_request_id: requestId, p_owner_key: ownerKey });
+    if (claimError) return errorResponse(requestId, "SERVER_CONFIGURATION", "Duplicate-request protection is not configured. Apply the latest database migration.", 500, requestStartedAt);
+    const claimResult = claim as { status?: string; result?: unknown } | null;
+    if (claimResult?.status === "completed" && claimResult.result) {
+      const replay = NextResponse.json(claimResult.result, { headers: { "x-request-id": requestId, "x-idempotent-replay": "true" } });
+      if (!user && anonymousId) {
+        const {data: usage}=await admin.from("anonymous_usage").select("used_count").eq("anonymous_id",anonymousId).maybeSingle();
+        replay.cookies.set("lockedin_anonymous_id",anonymousId,{httpOnly:true,sameSite:"lax",secure:process.env.NODE_ENV==="production",maxAge:31_536_000,path:"/"});
+        replay.cookies.set("lockedin_anon_used",String(usage?.used_count??0),{sameSite:"lax",secure:process.env.NODE_ENV==="production",maxAge:31_536_000,path:"/"});
+      }
+      return replay;
+    }
+    if (claimResult?.status !== "claimed") {
+      return errorResponse(requestId, "ANALYSIS_IN_PROGRESS", "This analysis request is already processing. Wait a moment before retrying.", 409, requestStartedAt);
+    }
+    requestClaimed = true;
+
+    if (user) {
+      const { data: profile, error: profileError } = await admin.from("profiles").select("daily_free_used,daily_free_usage_date,paid_credits,plan").eq("id", user.id).single();
+      if (profileError || !profile) throw new AnalysisError("Account usage could not be verified.", "USAGE_UNAVAILABLE");
+      const usedToday = profile.daily_free_usage_date === utcDate() ? profile.daily_free_used : 0;
+      const dailyRemaining = profile.plan === "premium" ? 0 : Math.max(0, DAILY_FREE_LIMIT - usedToday);
+      if (dailyRemaining + profile.paid_credits <= 0) throw new AnalysisError(profile.plan === "premium" ? "Your available credits are used. Choose a plan to continue." : "Your free analyses for today are used. Choose a plan to continue now.", "PRICING_REQUIRED");
+    } else if (anonymousId) {
+      const { data: usage } = await admin.from("anonymous_usage").select("used_count").eq("anonymous_id", anonymousId).maybeSingle();
+      if ((usage?.used_count ?? 0) >= 3) throw new AnalysisError("Create an account for 3 daily free analyses.", "SIGNUP_REQUIRED");
+    }
+
     const resumeText = await extractResumeText(file, requestId);
     const jobText = await scrapeJobDescription(jobUrl, contextKey, requestId);
     const result = await analyzeResume(resumeText, jobText, geminiKey, requestId);
 
     if (user) {
-        const { data: consumed, error: consumeError } = await admin.rpc("consume_registered_credit", { p_user: user.id });
-        if (consumeError) return errorResponse(requestId, "SERVER_CONFIGURATION", "Account usage could not be updated.", 500, requestStartedAt);
-        if (!consumed) return errorResponse(requestId, "PRICING_REQUIRED", "Your daily allowance or paid credits were used by another request. Choose a plan to continue now.", 402, requestStartedAt);
         let storedResumeId: string | null = null;
         if(typeof suppliedResumeId==="string"&&/^[0-9a-f-]{36}$/i.test(suppliedResumeId)){const {data:owned}=await admin.from("resumes").select("id").eq("id",suppliedResumeId).eq("user_id",user.id).maybeSingle();storedResumeId=owned?.id??null;}
         if(!storedResumeId){
           const extension = file.name.split(".").pop()?.toLowerCase() || "bin"; const newResumeId=crypto.randomUUID(); const path=`${user.id}/${newResumeId}.${extension}`; const bytes=Buffer.from(await file.arrayBuffer()); const uploaded=await admin.storage.from("resumes").upload(path,bytes,{contentType:file.type,upsert:false});
-          if(!uploaded.error){const {data:resumeRow}=await admin.from("resumes").insert({id:newResumeId,user_id:user.id,file_name:file.name,storage_path:path,mime_type:file.type,size_bytes:file.size}).select("id").single();storedResumeId=resumeRow?.id??null;}
+          if(uploaded.error) throw new AnalysisError("The validated report could not be saved with its résumé. No credit was used.","REPORT_SAVE_FAILED");
+          const {data:resumeRow,error:resumeError}=await admin.from("resumes").insert({id:newResumeId,user_id:user.id,file_name:file.name,storage_path:path,mime_type:file.type,size_bytes:file.size}).select("id").single();
+          if(resumeError||!resumeRow){await admin.storage.from("resumes").remove([path]);throw new AnalysisError("The validated report could not be saved with its résumé. No credit was used.","REPORT_SAVE_FAILED");}
+          storedResumeId=resumeRow.id;
         }
-        const { data: job } = await admin.from("job_descriptions").insert({ user_id: user.id, source_url: jobUrl, job_title: result.jobTitle, company_name: result.companyName || null }).select("id").single();
-        await admin.from("analyses").insert({ user_id: user.id, resume_id: storedResumeId, job_description_id: job?.id ?? null, job_title: result.jobTitle, company_name: result.companyName || null, match_score: result.score, result });
+        const {data:finalized,error:finalizeError}=await admin.rpc("finalize_registered_analysis",{p_request_id:requestId,p_owner_key:ownerKey,p_user:user.id,p_resume_id:storedResumeId,p_source_url:jobUrl,p_job_title:result.jobTitle,p_company_name:result.companyName||null,p_score:result.score,p_result:result});
+        if(finalizeError||(finalized as {status?:string}|null)?.status!=="completed")throw new AnalysisError("The validated report could not be saved and no credit was used. Please try again.","REPORT_SAVE_FAILED");
       } else if (anonymousId) {
-        const { data: consumed } = await admin.rpc("consume_anonymous_credit", { p_id: anonymousId });
-        if (!consumed) return errorResponse(requestId, "SIGNUP_REQUIRED", "Create an account for 3 additional analyses.", 403, requestStartedAt);
+        const {data:finalized,error:finalizeError}=await admin.rpc("finalize_anonymous_analysis",{p_request_id:requestId,p_owner_key:ownerKey,p_anonymous_id:anonymousId,p_result:result});
+        if(finalizeError||(finalized as {status?:string}|null)?.status!=="completed")throw new AnalysisError("The validated report could not be completed and no usage was deducted. Please try again.","REPORT_SAVE_FAILED");
       }
+    requestClaimed = false;
     pipelineLog({
       requestId,
       stage: "api.response",
@@ -190,6 +204,7 @@ export async function POST(request: Request) {
     }
     return response;
   } catch (error) {
+    if (requestClaimed) await admin.rpc("fail_analysis_request", { p_request_id: requestId, p_owner_key: ownerKey });
     if (error instanceof ResumeParseError) {
       return errorResponse(requestId, error.code, error.message, 400, requestStartedAt);
     }
@@ -197,6 +212,8 @@ export async function POST(request: Request) {
       return errorResponse(requestId, error.code, error.message, 422, requestStartedAt);
     }
     if (error instanceof AnalysisError) {
+      if (error.code === "PRICING_REQUIRED") return errorResponse(requestId, error.code, error.message, 402, requestStartedAt);
+      if (error.code === "SIGNUP_REQUIRED") return errorResponse(requestId, error.code, error.message, 403, requestStartedAt);
       const status = ["DIRECT_JOB_URL_REQUIRED", "INCOMPLETE_JOB_DESCRIPTION"].includes(error.code)
         ? 422
         : error.code === "INVALID_AI_CONFIGURATION"
