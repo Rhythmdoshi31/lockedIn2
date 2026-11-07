@@ -90,6 +90,7 @@ Deployment follow-up
 * Register the deployed `/api/webhooks/dodo` URL in Dodo and subscribe to payment and subscription events.
 * Configure Supabase Auth site/redirect URLs and enable the Google provider.
 * Apply `supabase/migrations/202611070001_analysis_idempotency.sql` before deploying the updated analysis route.
+* Apply `supabase/migrations/202611070002_analysis_usage_compatibility.sql` to projects where the idempotency migration was applied before daily usage columns.
 * Set `GEMINI_FALLBACK_MODEL`, `GEMINI_REQUEST_TIMEOUT_MS` and `GEMINI_MAX_INPUT_TOKENS` using `.env.example`.
 
 Production analysis reliability

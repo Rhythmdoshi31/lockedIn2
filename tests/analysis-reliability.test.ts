@@ -59,3 +59,11 @@ test("database finalization saves before one idempotent deduction", async () => 
   assert.match(sql,/request_id uuid primary key/);
   assert.match(sql,/status='completed'/);
 });
+
+test("usage compatibility migration restores required daily columns and server-only RPC access", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/202611070002_analysis_usage_compatibility.sql", import.meta.url),"utf8");
+  assert.match(sql,/add column if not exists daily_free_used/);
+  assert.match(sql,/add column if not exists daily_free_usage_date/);
+  assert.match(sql,/grant execute[\s\S]*to service_role/);
+  assert.match(sql,/revoke all[\s\S]*from public,anon,authenticated/);
+});

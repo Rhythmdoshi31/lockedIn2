@@ -57,7 +57,16 @@ export async function POST(request: Request) {
   const geminiKey = process.env.GEMINI_KEY;
   const cookieStore = await cookies();
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) {
+    pipelineLog({
+      requestId,
+      stage: "auth.user",
+      event: "authenticated_user_lookup",
+      status: "failed",
+      error: authError,
+    });
+  }
   let admin: ReturnType<typeof createAdminClient> | null = null;
   try { admin = createAdminClient(); } catch { /* configuration is handled below */ }
 
@@ -158,7 +167,21 @@ export async function POST(request: Request) {
 
     if (user) {
       const { data: profile, error: profileError } = await admin.from("profiles").select("daily_free_used,daily_free_usage_date,paid_credits,plan").eq("id", user.id).single();
-      if (profileError || !profile) throw new AnalysisError("Account usage could not be verified.", "USAGE_UNAVAILABLE");
+      if (profileError || !profile) {
+        pipelineLog({
+          requestId,
+          stage: "usage.profile_lookup",
+          event: "account_usage_verification",
+          status: "failed",
+          details: {
+            authenticatedUser: true,
+            adminClient: true,
+            errorCode: profileError?.code ?? "PROFILE_NOT_FOUND",
+          },
+          error: profileError ?? new Error("Authenticated user has no profile row."),
+        });
+        throw new AnalysisError("Account usage could not be verified.", "USAGE_UNAVAILABLE");
+      }
       const usedToday = profile.daily_free_usage_date === utcDate() ? profile.daily_free_used : 0;
       const dailyRemaining = profile.plan === "premium" ? 0 : Math.max(0, DAILY_FREE_LIMIT - usedToday);
       if (dailyRemaining + profile.paid_credits <= 0) throw new AnalysisError(profile.plan === "premium" ? "Your available credits are used. Choose a plan to continue." : "Your free analyses for today are used. Choose a plan to continue now.", "PRICING_REQUIRED");
