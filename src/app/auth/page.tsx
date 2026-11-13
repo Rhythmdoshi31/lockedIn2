@@ -61,8 +61,8 @@ function AuthForm() {
     const supabase = createClient();
     if (mode === "forgot") {
       const redirectTo = `${location.origin}/auth/callback?flow=password-reset&next=${encodeURIComponent("/auth?mode=reset")}`;
-      await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-      setMessage("If an account exists for that address, a password reset link has been sent.");
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      setMessage(error ? "We couldn’t send a recovery email right now. Try again shortly." : "If an account exists for that address, a password reset link has been sent.");
       setBusy(false);
       return;
     }
