@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { pipelineLog } from "@/lib/pipeline-log";
+import { neutralAnalysisApiMessage } from "@/lib/analysis-public-error";
 import {
   continuePendingAnalysis,
   createPendingAnalysis,
@@ -660,6 +661,7 @@ export default function Home() {
           details: {
             httpStatus: response.status,
             code: parsedError.success ? parsedError.data.error.code : "UNKNOWN_API_ERROR",
+            serverRequestId: parsedError.success ? parsedError.data.error.requestId ?? requestId : requestId,
           },
         });
         if (parsedError.success && parsedError.data.error.code === "SIGNUP_REQUIRED") {
@@ -671,7 +673,9 @@ export default function Home() {
           return;
         }
         throw new Error(
-          parsedError.success ? parsedError.data.error.message : "The analysis could not be completed.",
+          parsedError.success
+            ? neutralAnalysisApiMessage(parsedError.data.error.code, parsedError.data.error.message)
+            : "The analysis could not be completed.",
         );
       }
 
@@ -700,7 +704,7 @@ export default function Home() {
         event: "analysis_flow",
         status: "failed",
         durationMs: Math.round(performance.now() - requestStartedAt),
-        error: requestError,
+        details: { failureKind: requestError instanceof Error ? "controlled_error" : "unknown_error" },
       });
       setError(
         requestError instanceof Error

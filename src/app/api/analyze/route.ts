@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 import { analysisRateLimits } from "@/lib/analysis-rate-limit";
+import { publicAnalysisErrorMessage } from "@/lib/analysis-public-error";
 import { AnalysisError, analyzeResume } from "@/lib/gemini";
 import { JobScrapeError, scrapeJobDescription } from "@/lib/job-scraper";
 import { pipelineLog } from "@/lib/pipeline-log";
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
     return errorResponse(
       requestId,
       "SERVER_CONFIGURATION",
-      "The analysis service is missing its server configuration.",
+      publicAnalysisErrorMessage("SERVER_CONFIGURATION"),
       500,
       requestStartedAt,
     );
@@ -304,14 +305,14 @@ export async function POST(request: Request) {
       return errorResponse(requestId, error.code, error.message, 422, requestStartedAt);
     }
     if (error instanceof AnalysisError) {
-      if (error.code === "PRICING_REQUIRED") return errorResponse(requestId, error.code, error.message, 402, requestStartedAt);
-      if (error.code === "SIGNUP_REQUIRED") return errorResponse(requestId, error.code, error.message, 403, requestStartedAt);
+      if (error.code === "PRICING_REQUIRED") return errorResponse(requestId, error.code, publicAnalysisErrorMessage(error.code), 402, requestStartedAt);
+      if (error.code === "SIGNUP_REQUIRED") return errorResponse(requestId, error.code, publicAnalysisErrorMessage(error.code), 403, requestStartedAt);
       const status = ["DIRECT_JOB_URL_REQUIRED", "INCOMPLETE_JOB_DESCRIPTION"].includes(error.code)
         ? 422
         : error.code === "INVALID_AI_CONFIGURATION"
           ? 500
           : 502;
-      return errorResponse(requestId, error.code, error.message, status, requestStartedAt);
+      return errorResponse(requestId, error.code, publicAnalysisErrorMessage(error.code), status, requestStartedAt);
     }
 
     pipelineLog({

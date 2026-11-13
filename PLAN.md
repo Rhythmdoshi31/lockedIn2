@@ -187,6 +187,7 @@ Production readiness
 * [ ] Configure and publish a verified direct support channel before launch.
 * [ ] Complete external Supabase Auth, payment, analytics, Search Console and monitoring dashboard checks.
 * [x] Preserve anonymous reports and resume requested PDF or Word downloads after authentication.
+* [x] Keep AI provider and model identity out of customer-facing UI, API errors and browser diagnostics.
 
 Working Rules
 
