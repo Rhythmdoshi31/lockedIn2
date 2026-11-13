@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+
+const idSchema = z.string().uuid();
 
 async function ownedResume(id: string) {
   const supabase = await createClient();
@@ -10,11 +13,18 @@ async function ownedResume(id: string) {
 }
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!idSchema.safeParse(id).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { supabase, user, resume } = await ownedResume(id);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!resume) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { data: file, error } = await supabase.storage.from("resumes").download(resume.storage_path);
   if (error) return NextResponse.json({ error: "The résumé file is unavailable." }, { status: 404 });
   const disposition = new URL(request.url).searchParams.get("download") === "1" ? "attachment" : "inline";
-  return new NextResponse(file, { headers: { "content-type": resume.mime_type, "content-disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(resume.file_name)}` } });
+  return new NextResponse(file, { headers: {
+    "content-type": resume.mime_type,
+    "content-disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(resume.file_name)}`,
+    "cache-control": "private, no-store, max-age=0",
+    "content-security-policy": "sandbox",
+    "x-content-type-options": "nosniff",
+  } });
 }

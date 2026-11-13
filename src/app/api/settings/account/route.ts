@@ -7,6 +7,25 @@ import { createClient } from "@/lib/supabase/server";
 const deletionSchema = z.object({ confirmation: z.literal("DELETE"), password: z.string().max(200).optional() });
 const TERMINAL_SUBSCRIPTIONS = new Set(["cancelled", "expired", "failed"]);
 
+async function listStoredPaths(
+  admin: ReturnType<typeof createAdminClient>,
+  bucket: "resumes" | "avatars",
+  userId: string,
+) {
+  const paths: string[] = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await admin.storage.from(bucket).list(userId, {
+      limit: pageSize,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
+    if (error) return { paths: [], error };
+    paths.push(...(data?.map((object) => `${userId}/${object.name}`) ?? []));
+    if (!data || data.length < pageSize) return { paths, error: null };
+  }
+}
+
 export async function DELETE(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -41,19 +60,17 @@ export async function DELETE(request: Request) {
   const { error: purgeError } = await admin.rpc("purge_user_webhook_events", { p_user: user.id });
   if (purgeError) return NextResponse.json({ error: "Payment-event data could not be removed. Your account was not deleted." }, { status: 500 });
 
-  const [{ data: resumeObjects, error: resumeListError }, { data: avatarObjects, error: avatarListError }] = await Promise.all([
-    admin.storage.from("resumes").list(user.id, { limit: 1000 }),
-    admin.storage.from("avatars").list(user.id, { limit: 100 }),
+  const [resumes, avatars] = await Promise.all([
+    listStoredPaths(admin, "resumes", user.id),
+    listStoredPaths(admin, "avatars", user.id),
   ]);
-  if (resumeListError || avatarListError) return NextResponse.json({ error: "Stored files could not be audited. Your account was not deleted." }, { status: 500 });
-  const resumePaths = resumeObjects?.map((object) => `${user.id}/${object.name}`) ?? [];
-  if (resumePaths.length) {
-    const { error } = await admin.storage.from("resumes").remove(resumePaths);
+  if (resumes.error || avatars.error) return NextResponse.json({ error: "Stored files could not be audited. Your account was not deleted." }, { status: 500 });
+  if (resumes.paths.length) {
+    const { error } = await admin.storage.from("resumes").remove(resumes.paths);
     if (error) return NextResponse.json({ error: "Stored résumés could not be removed. Your account was not deleted." }, { status: 500 });
   }
-  const avatarPaths = avatarObjects?.map((object) => `${user.id}/${object.name}`) ?? [];
-  if (avatarPaths.length) {
-    const { error } = await admin.storage.from("avatars").remove(avatarPaths);
+  if (avatars.paths.length) {
+    const { error } = await admin.storage.from("avatars").remove(avatars.paths);
     if (error) return NextResponse.json({ error: "Your profile picture could not be removed. Your account was not deleted." }, { status: 500 });
   }
   const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);

@@ -14,7 +14,10 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const validated = await validateResumeUpload((await request.formData()).get("resume"));
+  let formData: FormData;
+  try { formData = await request.formData(); }
+  catch { return NextResponse.json({ error: "The uploaded form could not be read." }, { status: 400 }); }
+  const validated = await validateResumeUpload(formData.get("resume"));
   if ("error" in validated) return NextResponse.json({ error: validated.error }, { status: 400 });
   const id = crypto.randomUUID();
   const path = `${user.id}/${id}.${validated.extension}`;

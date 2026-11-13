@@ -3,6 +3,7 @@
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { safeInternalPath } from "@/lib/safe-redirect";
 import { PageChrome } from "@/components/page-chrome";
 
 type AuthMode = "login" | "signup";
@@ -13,8 +14,7 @@ const RESEND_COOLDOWN_SECONDS = 60;
 function AuthForm() {
   const params = useSearchParams();
   const verified = params.get("verified");
-  const requestedNext = params.get("next");
-  const safeNext = requestedNext?.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/";
+  const safeNext = safeInternalPath(params.get("next"));
   const [mode, setMode] = useState<AuthMode>(params.get("mode") === "signup" ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

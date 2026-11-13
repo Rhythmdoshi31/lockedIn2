@@ -171,6 +171,13 @@ Branding and search metadata
 * [x] Publish public-only robots and sitemap routes and noindex private account pages.
 * [x] Add verified Organization and SoftwareApplication structured data.
 
+Security and reliability hardening
+
+* [x] Add durable server-only rate limits around expensive analysis requests.
+* [x] Require matching résumé extensions, MIME types and document signatures.
+* [x] Harden internal redirects, private file responses and API error handling.
+* [x] Restrict browser roles from rewriting stored résumés, job records and reports.
+
 Working Rules
 
 * Complete one phase at a time.

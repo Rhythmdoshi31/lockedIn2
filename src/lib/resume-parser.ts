@@ -6,6 +6,8 @@ import { pipelineLog } from "@/lib/pipeline-log";
 
 const MINIMUM_TEXT_LENGTH = 80;
 const MAXIMUM_TEXT_LENGTH = 60_000;
+const PDF_MIME_TYPE = "application/pdf";
+const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export const MAXIMUM_RESUME_SIZE = 10 * 1024 * 1024;
 
@@ -83,6 +85,14 @@ export async function extractResumeText(file: File, requestId: string): Promise<
       details: { reason: "file_too_large", sizeBytes: file.size },
     });
     throw new ResumeParseError("The résumé must be 10 MB or smaller.", "FILE_TOO_LARGE");
+  }
+
+  const expectedMimeType = extension === "pdf" ? PDF_MIME_TYPE : extension === "docx" ? DOCX_MIME_TYPE : null;
+  if (!expectedMimeType || file.type !== expectedMimeType) {
+    throw new ResumeParseError(
+      expectedMimeType ? "The résumé filename and file type do not match." : "Choose a PDF or DOCX résumé.",
+      "UNSUPPORTED_FILE",
+    );
   }
 
   const bufferStartedAt = performance.now();

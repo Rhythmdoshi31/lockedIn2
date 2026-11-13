@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+import { analysisRateLimits } from "@/lib/analysis-rate-limit";
 import { AnalysisError, analyzeResume } from "@/lib/gemini";
 import { JobScrapeError, scrapeJobDescription } from "@/lib/job-scraper";
 import { pipelineLog } from "@/lib/pipeline-log";
@@ -11,6 +12,8 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 240;
 const DAILY_FREE_LIMIT = 3;
+const MAX_MULTIPART_BYTES = 11 * 1024 * 1024;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function utcDate() { return new Date().toISOString().slice(0, 10); }
 
@@ -27,6 +30,7 @@ function errorResponse(
   message: string,
   status: number,
   startedAt: number,
+  headers?: Record<string, string>,
 ) {
   pipelineLog({
     requestId,
@@ -38,7 +42,7 @@ function errorResponse(
   });
   return NextResponse.json(
     { error: { code, message, requestId } },
-    { status, headers: { "x-request-id": requestId } },
+    { status, headers: { "x-request-id": requestId, ...headers } },
   );
 }
 
@@ -71,7 +75,7 @@ export async function POST(request: Request) {
   try { admin = createAdminClient(); } catch { /* configuration is handled below */ }
 
   let anonymousId = cookieStore.get("lockedin_anonymous_id")?.value;
-  if (!user && (!anonymousId || !/^[0-9a-f-]{36}$/i.test(anonymousId))) anonymousId = requestId;
+  if (!user && (!anonymousId || !UUID_PATTERN.test(anonymousId))) anonymousId = requestId;
   const ownerKey = user ? `user:${user.id}` : `anon:${anonymousId}`;
   let requestClaimed = false;
 
@@ -94,9 +98,74 @@ export async function POST(request: Request) {
     );
   }
 
+  const contentLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_MULTIPART_BYTES) {
+    return errorResponse(
+      requestId,
+      "REQUEST_TOO_LARGE",
+      "The analysis request is too large. Choose a résumé up to 10 MB.",
+      413,
+      requestStartedAt,
+    );
+  }
+
+  const { data: existingRequest } = await admin.from("analysis_requests")
+    .select("owner_key")
+    .eq("request_id", requestId)
+    .maybeSingle();
+  const limits = existingRequest?.owner_key === ownerKey
+    ? []
+    : analysisRateLimits(request, user?.id ?? null, process.env.SUPABASE_SECRET_KEY!);
+
+  for (const limit of limits) {
+    const { data: allowed, error: rateLimitError } = await admin.rpc("check_analysis_rate_limit", {
+      p_key: limit.key,
+      p_limit: limit.limit,
+      p_window_seconds: limit.windowSeconds,
+    });
+    if (rateLimitError) {
+      pipelineLog({
+        requestId,
+        stage: "usage.rate_limit",
+        event: "analysis_rate_limit",
+        status: "failed",
+        details: { errorCode: rateLimitError.code ?? "RATE_LIMIT_UNAVAILABLE" },
+        error: rateLimitError,
+      });
+      return errorResponse(
+        requestId,
+        "SERVER_CONFIGURATION",
+        "Analysis request limits are temporarily unavailable.",
+        500,
+        requestStartedAt,
+      );
+    }
+    if (!allowed) {
+      return errorResponse(
+        requestId,
+        "RATE_LIMITED",
+        "Too many analysis requests were submitted. Please wait before trying again.",
+        429,
+        requestStartedAt,
+        { "Retry-After": String(limit.windowSeconds) },
+      );
+    }
+  }
+
   try {
     const formStartedAt = performance.now();
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return errorResponse(
+        requestId,
+        "INVALID_MULTIPART_BODY",
+        "The uploaded form could not be read. Select the résumé again and retry.",
+        400,
+        requestStartedAt,
+      );
+    }
     const file = formData.get("resume");
     const jobUrl = formData.get("jobUrl");
     const suppliedResumeId = formData.get("resumeId");
@@ -196,7 +265,7 @@ export async function POST(request: Request) {
 
     if (user) {
         let storedResumeId: string | null = null;
-        if(typeof suppliedResumeId==="string"&&/^[0-9a-f-]{36}$/i.test(suppliedResumeId)){const {data:owned}=await admin.from("resumes").select("id").eq("id",suppliedResumeId).eq("user_id",user.id).maybeSingle();storedResumeId=owned?.id??null;}
+        if(typeof suppliedResumeId==="string"&&UUID_PATTERN.test(suppliedResumeId)){const {data:owned}=await admin.from("resumes").select("id").eq("id",suppliedResumeId).eq("user_id",user.id).maybeSingle();storedResumeId=owned?.id??null;}
         if(!storedResumeId){
           const extension = file.name.split(".").pop()?.toLowerCase() || "bin"; const newResumeId=crypto.randomUUID(); const path=`${user.id}/${newResumeId}.${extension}`; const bytes=Buffer.from(await file.arrayBuffer()); const uploaded=await admin.storage.from("resumes").upload(path,bytes,{contentType:file.type,upsert:false});
           if(uploaded.error) throw new AnalysisError("The validated report could not be saved with its résumé. No credit was used.","REPORT_SAVE_FAILED");

@@ -29,7 +29,7 @@ export async function PATCH(request: Request) {
     if (!hasPasswordIdentity) return NextResponse.json({ error: "This account uses a social login and does not have a password to change." }, { status: 400 });
     if (parsed.data.currentPassword === parsed.data.password) return NextResponse.json({ error: "Choose a password different from your current password." }, { status: 400 });
     const { error } = await supabase.auth.updateUser({ current_password: parsed.data.currentPassword, password: parsed.data.password });
-    return error ? NextResponse.json({ error: error.message }, { status: 400 }) : NextResponse.json({ message: "Password updated successfully." });
+    return error ? NextResponse.json({ error: "The current password was incorrect or the new password was rejected." }, { status: 400 }) : NextResponse.json({ message: "Password updated successfully." });
   }
 
   if (parsed.data.action === "notifications") {

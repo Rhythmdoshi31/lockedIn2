@@ -92,7 +92,7 @@ export function ProfileManager(props: ProfileManagerProps) {
 
   async function logout() {
     setBusy("logout");
-    const { error } = await createClient().auth.signOut();
+    const { error } = await createClient().auth.signOut({ scope: "global" });
     if (error) { report("logout", "error", "You could not be logged out. Please try again."); setBusy(null); return; }
     location.href = "/auth";
   }

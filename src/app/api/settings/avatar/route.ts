@@ -20,14 +20,17 @@ export async function GET() {
   if (!profile?.avatar_path) return NextResponse.json({ error: "No uploaded avatar" }, { status: 404 });
   const { data, error } = await supabase.storage.from("avatars").download(profile.avatar_path);
   if (error) return NextResponse.json({ error: "Avatar unavailable" }, { status: 404 });
-  return new NextResponse(data, { headers: { "content-type": data.type || "image/jpeg", "cache-control": "private, max-age=300" } });
+  return new NextResponse(data, { headers: { "content-type": data.type || "image/jpeg", "cache-control": "private, max-age=300", "x-content-type-options": "nosniff" } });
 }
 
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const file = (await request.formData()).get("avatar");
+  let formData: FormData;
+  try { formData = await request.formData(); }
+  catch { return NextResponse.json({ error: "The uploaded form could not be read." }, { status: 400 }); }
+  const file = formData.get("avatar");
   if (!(file instanceof File) || file.size < 1 || file.size > MAX_AVATAR_BYTES || !TYPES.has(file.type)) return NextResponse.json({ error: "Choose a JPG, PNG or WebP image up to 2 MB." }, { status: 400 });
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!validSignature(file.type, bytes)) return NextResponse.json({ error: "The selected image is invalid or damaged." }, { status: 400 });
