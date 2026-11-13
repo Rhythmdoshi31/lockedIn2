@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   },
   description,
   alternates: { canonical: "/" },
-  verification: { google: "googlecc823c841f692f67.html" },
+  verification: { google: "Q-mafyEzb8ybWCMXz2w98jHgUqE1Lvb5okxQvBR-VaU" },
   icons: {
     icon: [{ url: "/32x32.ico", sizes: "32x32", type: "image/x-icon" }],
     apple: [{ url: "/180x180.webp", sizes: "180x180", type: "image/webp" }],
