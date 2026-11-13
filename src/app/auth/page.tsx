@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { PageChrome } from "@/components/page-chrome";
 
-type AuthMode = "login" | "signup";
+type AuthMode = "login" | "signup" | "forgot" | "reset";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -15,10 +15,12 @@ function AuthForm() {
   const params = useSearchParams();
   const verified = params.get("verified");
   const safeNext = safeInternalPath(params.get("next"));
-  const [mode, setMode] = useState<AuthMode>(params.get("mode") === "signup" ? "signup" : "login");
+  const initialMode = params.get("mode");
+  const [mode, setMode] = useState<AuthMode>(initialMode === "signup" || initialMode === "forgot" || initialMode === "reset" ? initialMode : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(params.get("deleted") === "1" ? "Your account and personal data were deleted." : params.get("reason") === "limit" ? "Create an account for 3 free analyses every day." : null);
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [message, setMessage] = useState<string | null>(params.get("deleted") === "1" ? "Your account and personal data were deleted." : params.get("reason") === "limit" ? "Create an account for 3 free analyses every day." : params.get("recovery") === "error" ? "That recovery link is invalid or expired. Request a new one." : null);
   const [busy, setBusy] = useState(false);
   const [hasReport, setHasReport] = useState(false);
   const [saveReport, setSaveReport] = useState(safeNext.includes("saveReport=1"));
@@ -34,7 +36,10 @@ function AuthForm() {
     return `${location.origin}/auth/callback?flow=email-confirmation&next=${encodeURIComponent(next)}`;
   }, [saveReport]);
 
-  useEffect(() => { setHasReport(Boolean(localStorage.getItem("lockedin.pendingAnalysis"))); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHasReport(Boolean(localStorage.getItem("lockedin.pendingAnalysis"))), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = window.setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
@@ -54,6 +59,33 @@ function AuthForm() {
     setBusy(true);
     setMessage(null);
     const supabase = createClient();
+    if (mode === "forgot") {
+      const redirectTo = `${location.origin}/auth/callback?flow=password-reset&next=${encodeURIComponent("/auth?mode=reset")}`;
+      await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      setMessage("If an account exists for that address, a password reset link has been sent.");
+      setBusy(false);
+      return;
+    }
+    if (mode === "reset") {
+      if (password !== passwordConfirmation) {
+        setMessage("The passwords do not match.");
+        setBusy(false);
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        setMessage(error.message);
+        setBusy(false);
+        return;
+      }
+      await supabase.auth.signOut({ scope: "local" });
+      setPassword("");
+      setPasswordConfirmation("");
+      setMode("login");
+      setMessage("Your password has been updated. Log in with your new password.");
+      setBusy(false);
+      return;
+    }
     const result = mode === "signup"
       ? await supabase.auth.signUp({ email, password, options: { data: { save_anonymous_report: saveReport }, emailRedirectTo: confirmationRedirect } })
       : await supabase.auth.signInWithPassword({ email, password });
@@ -109,12 +141,17 @@ function AuthForm() {
     </div><div className="auth-spacer"/></section></PageChrome>;
   }
 
-  return <PageChrome><section className="auth-layout"><div className="auth-panel"><p className="eyebrow">Your application archive</p><h1>{mode === "login" ? "Welcome back." : "Create your account."}</h1><p>{mode === "signup" ? "Save analyses, keep résumés secure, and receive three free analyses every day after email verification." : "Continue your considered approach to every application."}</p>
-    <button className="oauth-button" onClick={google} type="button">Continue with Google</button><div className="auth-divider"><span>or</span></div>
-    <form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email"/></label><label>Password<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete={mode === "login" ? "current-password" : "new-password"}/></label>
+  const heading = mode === "login" ? "Welcome back." : mode === "signup" ? "Create your account." : mode === "forgot" ? "Reset your password." : "Choose a new password.";
+  const introduction = mode === "signup" ? "Save analyses, keep résumés secure, and receive three free analyses every day after email verification." : mode === "forgot" ? "Enter your account email and we’ll send a secure recovery link." : mode === "reset" ? "Use at least eight characters for your new password." : "Continue your considered approach to every application.";
+
+  return <PageChrome><section className="auth-layout"><div className="auth-panel"><p className="eyebrow">Your application archive</p><h1>{heading}</h1><p>{introduction}</p>
+    {(mode === "login" || mode === "signup") && <><button className="oauth-button" onClick={google} type="button">Continue with Google</button><div className="auth-divider"><span>or</span></div></>}
+    <form onSubmit={submit}>{mode !== "reset" && <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email"/></label>}{mode !== "forgot" && <label>Password<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete={mode === "login" ? "current-password" : "new-password"}/></label>}{mode === "reset" && <label>Confirm password<input type="password" minLength={8} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required autoComplete="new-password"/></label>}
     {mode === "signup" && hasReport && <label className="consent-row"><input type="checkbox" checked={saveReport} onChange={(event) => setSaveReport(event.target.checked)}/><span>Save my current anonymous report to this account</span></label>}
-    <button className="analyze-button" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}<span>→</span></button></form>
-    {message && <p className="form-error">{message}</p>}<button className="auth-switch" type="button" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMessage(null); }}>{mode === "login" ? "New to LockedIn? Create an account" : "Already have an account? Log in"}</button></div><div className="auth-spacer"/></section></PageChrome>;
+    <button className="analyze-button" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Log in" : mode === "signup" ? "Create account" : mode === "forgot" ? "Send reset link" : "Update password"}<span>→</span></button></form>
+    {message && <p className="form-error" role="status">{message}</p>}
+    {mode === "login" && <button className="auth-switch" type="button" onClick={() => { setMode("forgot"); setMessage(null); }}>Forgot your password?</button>}
+    <button className="auth-switch" type="button" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMessage(null); setPassword(""); setPasswordConfirmation(""); }}>{mode === "login" ? "New to LockedIn? Create an account" : "Return to login"}</button></div><div className="auth-spacer"/></section></PageChrome>;
 }
 
 export default function AuthPage() { return <Suspense fallback={<PageChrome><section className="auth-layout"><div className="auth-panel"><p className="eyebrow">Preparing your account</p></div><div className="auth-spacer"/></section></PageChrome>}><AuthForm/></Suspense>; }

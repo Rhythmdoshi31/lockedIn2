@@ -178,6 +178,15 @@ Security and reliability hardening
 * [x] Harden internal redirects, private file responses and API error handling.
 * [x] Restrict browser roles from rewriting stored résumés, job records and reports.
 
+Production readiness
+
+* [x] Add factual Privacy, Terms, Refund and Contact pages with persistent footer links.
+* [x] Add email password recovery and controlled application error feedback.
+* [x] Reuse the configured canonical production origin across metadata, robots and sitemap.
+* [x] Keep above-the-fold interior artwork preloaded to protect its LCP path.
+* [ ] Configure and publish a verified direct support channel before launch.
+* [ ] Complete external Supabase Auth, payment, analytics, Search Console and monitoring dashboard checks.
+
 Working Rules
 
 * Complete one phase at a time.
