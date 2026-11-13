@@ -186,6 +186,7 @@ Production readiness
 * [x] Keep above-the-fold interior artwork preloaded to protect its LCP path.
 * [ ] Configure and publish a verified direct support channel before launch.
 * [ ] Complete external Supabase Auth, payment, analytics, Search Console and monitoring dashboard checks.
+* [x] Preserve anonymous reports and resume requested PDF or Word downloads after authentication.
 
 Working Rules
 

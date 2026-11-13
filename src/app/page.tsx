@@ -5,6 +5,16 @@ import { AnimatePresence, motion } from "motion/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { pipelineLog } from "@/lib/pipeline-log";
+import {
+  continuePendingAnalysis,
+  createPendingAnalysis,
+  parsePendingAnalysis,
+  pendingAuthenticationPath,
+  PENDING_ANALYSIS_KEY,
+  serializePendingAnalysis,
+  type PendingAnalysis,
+  type PendingDownloadFormat,
+} from "@/lib/pending-analysis";
 import { deleteResume, loadResume, saveResume } from "@/lib/resume-store";
 import {
   analysisResultSchema,
@@ -129,9 +139,26 @@ function UploadField({ file, restoring, onChange, onRemove, savedResumes, onSele
   );
 }
 
-export function AnalysisResults({ result, resumeName }: { result: AnalysisResult; resumeName?: string | null }) {
+function initiateBrowserDownload(blob: Blob, format: PendingDownloadFormat) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `lockedin-analysis.${format}`;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+async function requestReportDownload(pending: PendingAnalysis, format: PendingDownloadFormat) {
+  const response = await fetch("/api/download", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ format, result: pending.result, resumeName: pending.resumeName }) });
+  if (!response.ok) return { ok: false, unauthorized: response.status === 401 };
+  initiateBrowserDownload(await response.blob(), format);
+  return { ok: true, unauthorized: false };
+}
+
+export function AnalysisResults({ result, resumeName, jobUrl, requestId, requiresPersistence = false }: { result: AnalysisResult; resumeName?: string | null; jobUrl?: string; requestId?: string; requiresPersistence?: boolean }) {
   const [enhancementDecisions, setEnhancementDecisions] = useState<Record<number, "accepted" | "rejected">>({});
   const [copiedEnhancement, setCopiedEnhancement] = useState<number | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const rubric = [
     ["Technical Skills", result.rubric.skills, 45, result.rubricExplanations.skills.explanation],
     ["Experience", result.rubric.experience, 30, result.rubricExplanations.experience.explanation],
@@ -139,10 +166,56 @@ export function AnalysisResults({ result, resumeName }: { result: AnalysisResult
     ["Role Alignment", result.rubric.roleAlignment, 15, result.rubricExplanations.roleAlignment.explanation],
   ] as const;
 
-  async function exportAnalysis(format:"pdf"|"docx") {
-    const response=await fetch("/api/download",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({format,result,resumeName})});
-    if(response.status===401){window.location.href="/auth?reason=download";return;} if(!response.ok)return;
-    const url=URL.createObjectURL(await response.blob()); const anchor=document.createElement("a"); anchor.href=url; anchor.download=`lockedin-analysis.${format}`; anchor.click(); URL.revokeObjectURL(url);
+  async function exportAnalysis(format:PendingDownloadFormat) {
+    setExportError(null);
+    if (!jobUrl || !requestId) {
+      const response = await fetch("/api/download", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ format, result, resumeName }) }).catch(() => null);
+      if (response?.status === 401) {
+        const params = new URLSearchParams({ next: location.pathname, reason: "download" });
+        window.location.href = `/auth?${params.toString()}`;
+        return;
+      }
+      if (!response?.ok) {
+        setExportError("The report could not be downloaded. Try again.");
+        return;
+      }
+      initiateBrowserDownload(await response.blob(), format);
+      return;
+    }
+    const pending = createPendingAnalysis({ requestId, result, jobUrl, resumeName: resumeName ?? null, downloadFormat: format });
+    try {
+      localStorage.setItem(PENDING_ANALYSIS_KEY, serializePendingAnalysis(pending));
+    } catch {
+      setExportError("This report could not be preserved for sign-in. Free some browser storage and try again.");
+      return;
+    }
+    if (requiresPersistence) {
+      const status = await continuePendingAnalysis(pending, {
+        persist: async (value) => {
+          const response = await fetch("/api/analyses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) }).catch(() => null);
+          if (response?.status === 401) window.location.href = pendingAuthenticationPath();
+          return Boolean(response?.ok);
+        },
+        download: async (value, requestedFormat) => {
+          const response = await requestReportDownload(value, requestedFormat).catch(() => ({ ok: false, unauthorized: false }));
+          if (response.unauthorized) window.location.href = pendingAuthenticationPath();
+          return response.ok;
+        },
+      });
+      if (status === "completed") localStorage.removeItem(PENDING_ANALYSIS_KEY);
+      else setExportError(status === "persistence_failed" ? "Your report could not be saved to your account. It remains safely stored in this browser; try again." : "Your report was saved, but the download could not start. Try again.");
+      return;
+    }
+    const download = await requestReportDownload(pending, format).catch(() => ({ ok: false, unauthorized: false }));
+    if (download.unauthorized) {
+      window.location.href = pendingAuthenticationPath();
+      return;
+    }
+    if (!download.ok) {
+      setExportError("The report could not be downloaded. Your completed analysis is still available; try again.");
+      return;
+    }
+    localStorage.removeItem(PENDING_ANALYSIS_KEY);
   }
 
   async function copyEnhancement(index: number, text: string) {
@@ -319,6 +392,7 @@ export function AnalysisResults({ result, resumeName }: { result: AnalysisResult
         <div className="assessment-pair"><div><span>Strongest area</span><p>{result.finalAssessment.strongestArea}</p></div><div><span>Biggest gap</span><p>{result.finalAssessment.biggestGap}</p></div></div>
         <div className="next-actions"><span>Three recommended actions</span><ol>{result.finalAssessment.nextActions.map((action) => <li key={action}>{action}</li>)}</ol></div>
       </section>
+      {exportError && <p className="form-error" role="alert">{exportError}</p>}
       <p className="result-note">Every finding is tied to a stated job requirement and checked against résumé evidence.</p>
     </motion.section>
   );
@@ -328,12 +402,16 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [jobUrl, setJobUrl] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [resultRequestId, setResultRequestId] = useState<string | null>(null);
+  const [resultResumeName, setResultResumeName] = useState<string | null>(null);
+  const [resultRequiresPersistence, setResultRequiresPersistence] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
   const [savedResumes,setSavedResumes]=useState<Array<{id:string;file_name:string;created_at:string}>>([]);
   const [resumeId,setResumeId]=useState<string|null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const pendingTransferStarted = useRef(false);
 
   useEffect(() => {
     const restoreRequestId = crypto.randomUUID();
@@ -371,9 +449,45 @@ export default function Home() {
       .catch(() => setError("Your saved résumé could not be restored. Choose it again."))
       .finally(() => setIsRestoring(false));
     fetch("/api/resumes").then(r=>r.json()).then(body=>setSavedResumes(body.resumes||[])).catch(()=>{});
-    if(new URLSearchParams(location.search).get("saveReport")==="1"){
-      const raw=localStorage.getItem("lockedin.pendingAnalysis");if(raw){try{const pending=JSON.parse(raw);fetch("/api/analyses",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(pending)}).then(response=>{if(response.ok)localStorage.removeItem("lockedin.pendingAnalysis")});}catch{/* ignore malformed local state */}}
-      history.replaceState(null,"","/");
+    const shouldContinuePending = new URLSearchParams(location.search).get("saveReport") === "1";
+    const pending = parsePendingAnalysis(localStorage.getItem(PENDING_ANALYSIS_KEY), () => crypto.randomUUID());
+    if (pending && (shouldContinuePending || pending.downloadFormat)) {
+      localStorage.setItem(PENDING_ANALYSIS_KEY, serializePendingAnalysis(pending));
+      queueMicrotask(() => {
+        setResult(pending.result);
+        setJobUrl(pending.jobUrl);
+        setResultRequestId(pending.requestId);
+        setResultResumeName(pending.resumeName);
+        setResultRequiresPersistence(true);
+      });
+    }
+    if (shouldContinuePending) {
+      history.replaceState(null, "", "/");
+      if (!pending) {
+        queueMicrotask(() => setError("The pending report is no longer available in this browser. Run the analysis again."));
+      } else if (!pendingTransferStarted.current) {
+        pendingTransferStarted.current = true;
+        void continuePendingAnalysis(pending, {
+          persist: async (value) => {
+            const response = await fetch("/api/analyses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) }).catch(() => null);
+            if (response?.status === 401) window.location.href = pendingAuthenticationPath();
+            return Boolean(response?.ok);
+          },
+          download: async (value, format) => {
+            const response = await requestReportDownload(value, format).catch(() => ({ ok: false, unauthorized: false }));
+            if (response.unauthorized) window.location.href = pendingAuthenticationPath();
+            return response.ok;
+          },
+        }).then((status) => {
+          if (status === "completed") {
+            localStorage.removeItem(PENDING_ANALYSIS_KEY);
+            setResultRequiresPersistence(false);
+            window.dispatchEvent(new Event("lockedin:account-changed"));
+          } else {
+            setError(status === "persistence_failed" ? "Your report could not be saved to your account. It remains safely stored in this browser; log in and try the download again." : "Your report was saved, but the download could not start. Use the download button to try again.");
+          }
+        });
+      }
     }
   }, []);
 
@@ -438,6 +552,9 @@ export default function Home() {
     });
     setError(null);
     setResult(null);
+    setResultRequestId(null);
+    setResultResumeName(null);
+    setResultRequiresPersistence(false);
     setFile(selectedFile);
     setResumeId(null);
     window.localStorage.setItem(RESUME_NAME_STORAGE_KEY, selectedFile.name);
@@ -457,6 +574,9 @@ export default function Home() {
     setFile(null);
     setResumeId(null);
     setResult(null);
+    setResultRequestId(null);
+    setResultResumeName(null);
+    setResultRequiresPersistence(false);
     setError(null);
     window.localStorage.removeItem(RESUME_NAME_STORAGE_KEY);
 
@@ -565,8 +685,11 @@ export default function Home() {
         details: { httpStatus: response.status, score: parsedResult.score },
       });
       setResult(parsedResult);
+      setResultRequestId(requestId);
+      setResultResumeName(file.name);
+      setResultRequiresPersistence(false);
       window.dispatchEvent(new Event("lockedin:account-changed"));
-      window.localStorage.setItem("lockedin.pendingAnalysis", JSON.stringify({ result: parsedResult, jobUrl }));
+      window.localStorage.setItem(PENDING_ANALYSIS_KEY, serializePendingAnalysis(createPendingAnalysis({ requestId, result: parsedResult, jobUrl, resumeName: file.name })));
       window.setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 180);
@@ -684,7 +807,7 @@ export default function Home() {
         </motion.form>
       </section>
       <div className="results-anchor" ref={resultsRef}>
-        <AnimatePresence>{result && <AnalysisResults result={result} resumeName={file?.name} />}</AnimatePresence>
+        <AnimatePresence>{result && resultRequestId && <AnalysisResults result={result} resumeName={file?.name ?? resultResumeName} jobUrl={jobUrl} requestId={resultRequestId} requiresPersistence={resultRequiresPersistence} />}</AnimatePresence>
       </div>
     </main>
   );

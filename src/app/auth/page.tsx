@@ -4,6 +4,7 @@ import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeInternalPath } from "@/lib/safe-redirect";
+import { PENDING_ANALYSIS_KEY } from "@/lib/pending-analysis";
 import { PageChrome } from "@/components/page-chrome";
 
 type AuthMode = "login" | "signup" | "forgot" | "reset";
@@ -15,6 +16,7 @@ function AuthForm() {
   const params = useSearchParams();
   const verified = params.get("verified");
   const safeNext = safeInternalPath(params.get("next"));
+  const isDownloadRecovery = params.get("reason") === "download";
   const initialMode = params.get("mode");
   const [mode, setMode] = useState<AuthMode>(initialMode === "signup" || initialMode === "forgot" || initialMode === "reset" ? initialMode : "login");
   const [email, setEmail] = useState("");
@@ -23,7 +25,7 @@ function AuthForm() {
   const [message, setMessage] = useState<string | null>(params.get("deleted") === "1" ? "Your account and personal data were deleted." : params.get("reason") === "limit" ? "Create an account for 3 free analyses every day." : params.get("recovery") === "error" ? "That recovery link is invalid or expired. Request a new one." : null);
   const [busy, setBusy] = useState(false);
   const [hasReport, setHasReport] = useState(false);
-  const [saveReport, setSaveReport] = useState(safeNext.includes("saveReport=1"));
+  const [saveReport, setSaveReport] = useState(isDownloadRecovery || safeNext.includes("saveReport=1"));
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendFeedback, setResendFeedback] = useState<Feedback>(null);
@@ -37,7 +39,7 @@ function AuthForm() {
   }, [saveReport]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setHasReport(Boolean(localStorage.getItem("lockedin.pendingAnalysis"))), 0);
+    const timer = window.setTimeout(() => setHasReport(Boolean(localStorage.getItem(PENDING_ANALYSIS_KEY))), 0);
     return () => window.clearTimeout(timer);
   }, []);
   useEffect(() => {
@@ -147,7 +149,7 @@ function AuthForm() {
   return <PageChrome><section className="auth-layout"><div className="auth-panel"><p className="eyebrow">Your application archive</p><h1>{heading}</h1><p>{introduction}</p>
     {(mode === "login" || mode === "signup") && <><button className="oauth-button" onClick={google} type="button">Continue with Google</button><div className="auth-divider"><span>or</span></div></>}
     <form onSubmit={submit}>{mode !== "reset" && <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email"/></label>}{mode !== "forgot" && <label>Password<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete={mode === "login" ? "current-password" : "new-password"}/></label>}{mode === "reset" && <label>Confirm password<input type="password" minLength={8} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required autoComplete="new-password"/></label>}
-    {mode === "signup" && hasReport && <label className="consent-row"><input type="checkbox" checked={saveReport} onChange={(event) => setSaveReport(event.target.checked)}/><span>Save my current anonymous report to this account</span></label>}
+    {mode === "signup" && hasReport && (isDownloadRecovery ? <p className="confirmation-instructions">Your completed report will be saved to this account and the requested download will continue after verification.</p> : <label className="consent-row"><input type="checkbox" checked={saveReport} onChange={(event) => setSaveReport(event.target.checked)}/><span>Save my current anonymous report to this account</span></label>)}
     <button className="analyze-button" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Log in" : mode === "signup" ? "Create account" : mode === "forgot" ? "Send reset link" : "Update password"}<span>→</span></button></form>
     {message && <p className="form-error" role="status">{message}</p>}
     {mode === "login" && <button className="auth-switch" type="button" onClick={() => { setMode("forgot"); setMessage(null); }}>Forgot your password?</button>}
