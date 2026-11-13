@@ -1,3 +1,21 @@
+import type { Metadata } from "next";
 import { PageChrome } from "@/components/page-chrome";
 import { CheckoutButton } from "@/components/checkout-button";
+
+export const metadata: Metadata = {
+  title: "Pricing",
+  description:
+    "Choose one-time résumé analysis credits or a monthly Locked In plan with credits that carry forward.",
+  alternates: { canonical: "/pricing" },
+  openGraph: {
+    title: "Locked In Pricing",
+    description:
+      "Choose one-time résumé analysis credits or a monthly plan with credits that carry forward.",
+    url: "/pricing",
+    siteName: "Locked In",
+    type: "website",
+    images: [{ url: "/1200x630.webp", width: 1200, height: 630, alt: "Locked In résumé analysis" }],
+  },
+};
+
 export default function PricingPage(){return <PageChrome><section className="content-panel pricing-panel"><div className="pricing-intro"><p className="eyebrow">A small investment in better applications</p><h1>Choose your pace.</h1><p className="page-intro">Every credit funds one complete, evidence-led analysis. Purchased credits never expire.</p></div><div className="pricing-grid"><article><div className="plan-heading"><span>One-time purchase</span><h2>Starter</h2></div><div className="plan-price"><strong><small>$</small>2.99</strong><span>paid once</span></div><p className="plan-allocation"><strong>10</strong> complete analyses</p><ul><li>Credits never expire</li><li>Complete PDF and Word reports</li><li>Saved analysis history</li></ul><CheckoutButton plan="starter"/></article><article className="featured-plan"><div className="recommended-label">Best value</div><div className="plan-heading"><span>Monthly subscription</span><h2>Premium</h2></div><div className="plan-price"><strong><small>$</small>4.99</strong><span>per month</span></div><p className="plan-allocation"><strong>80</strong> credits every billing cycle</p><ul><li>50 credits plus 30 monthly bonus</li><li>Unused credits carry forward</li><li>Cancel any time; existing credits remain</li></ul><CheckoutButton plan="premium"/></article></div></section></PageChrome>}

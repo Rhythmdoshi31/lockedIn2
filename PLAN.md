@@ -164,6 +164,13 @@ Authentication reliability
 * [x] Keep authenticated navbar identity authoritative when optional profile enrichment is unavailable.
 * [x] Prevent account-summary responses from being cached across users or sessions.
 
+Branding and search metadata
+
+* [x] Use the supplied Locked In logo, favicon, Apple touch icon and application icons.
+* [x] Add canonical, Open Graph and Twitter metadata for the production domain.
+* [x] Publish public-only robots and sitemap routes and noindex private account pages.
+* [x] Add verified Organization and SoftwareApplication structured data.
+
 Working Rules
 
 * Complete one phase at a time.

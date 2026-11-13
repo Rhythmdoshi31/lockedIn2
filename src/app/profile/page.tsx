@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageChrome } from "@/components/page-chrome";
@@ -5,6 +6,12 @@ import { ProfileManager } from "@/components/profile-manager";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "Profile",
+  description: "Manage your private Locked In profile, plan and account preferences.",
+  alternates: { canonical: "/profile" },
+  robots: { index: false, follow: false },
+};
 
 export default async function ProfilePage() {
   const supabase = await createClient();

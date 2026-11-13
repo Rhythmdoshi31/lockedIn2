@@ -93,17 +93,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
   letter-spacing: -0.02em;
   text-decoration: none;
 }
-.wordmark-mark {
-  align-items: center;
-  border: 1px solid var(--ink);
-  border-radius: 50% 50% 46% 54%;
-  display: flex;
-  font-size: 13px;
-  height: 28px;
-  justify-content: center;
-  transform: rotate(-8deg);
-  width: 28px;
-}
+.wordmark-logo { display:block; height:32px; object-fit:contain; width:32px; }
 .header-note {
   color: var(--muted);
   font-size: 10px;
