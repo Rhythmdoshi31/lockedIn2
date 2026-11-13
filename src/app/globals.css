@@ -269,6 +269,17 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 .download-actions { display:flex; gap:9px; }
 .content-panel { background:rgba(248,244,233,.94); border-right:1px solid var(--line); min-height:calc(100svh - 78px); padding:58px clamp(24px,5vw,70px) 40px; position:relative; width:min(960px,72vw); z-index:2; }
 .page-intro { color:var(--muted); font-family:Georgia,"Times New Roman",serif; line-height:1.5; margin:14px 0 26px; max-width:600px; }
+.legal-panel { height:auto; min-height:calc(100svh - 78px); overflow:visible; }
+.legal-updated { color:var(--red); font-size:9px; letter-spacing:.12em; margin:12px 0 0; text-transform:uppercase; }
+.legal-copy { max-width:720px; }
+.legal-copy section { border-top:1px solid var(--line); padding:22px 0; }
+.legal-copy h2 { font-family:Georgia,"Times New Roman",serif; font-size:23px; font-weight:400; margin:0 0 9px; }
+.legal-copy p { color:var(--muted); font-size:12px; line-height:1.75; margin:0; }
+.legal-copy a { color:var(--red); }
+.site-footer { align-items:center; background:var(--paper); border-top:1px solid var(--line); color:var(--muted); display:flex; font-size:9px; justify-content:space-between; letter-spacing:.08em; padding:16px clamp(20px,4vw,58px); position:relative; text-transform:uppercase; z-index:5; }
+.site-footer nav { display:flex; flex-wrap:wrap; gap:10px 20px; }
+.site-footer a { color:inherit; text-decoration:none; }
+.site-footer a:hover { color:var(--red); }
 .analysis-card-list { display:grid; gap:9px; }
 .analysis-history-card { align-items:center; background:rgba(255,252,244,.72); border:1px solid var(--line); display:grid; grid-template-columns:1fr auto; padding:0; position:relative; transition:transform 180ms ease,border-color 180ms ease,box-shadow 180ms ease; }
 .analysis-history-card:hover { border-color:var(--red); transform:translateY(-2px); }
@@ -1113,6 +1124,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, label[for="resume"]:
 }
 
 @media (max-width: 700px) {
+  .site-footer { align-items:flex-start; flex-direction:column; gap:12px; }
   .settings-card { padding:20px 16px; }
   .profile-grid article { min-height:0; padding:17px 16px; }
   .profile-password-form { align-items:stretch; grid-template-columns:1fr; }

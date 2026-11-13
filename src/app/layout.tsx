@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import { AccountProvider } from "@/components/account-provider";
 import { GlobalHeader } from "@/components/global-header";
+import { SiteFooter } from "@/components/site-footer";
+import { SITE_URL } from "@/lib/site";
 
 import "./globals.css";
 
-const siteUrl = "https://locked-in2.vercel.app";
 const title = "Locked In — AI Resume Analysis for Better Applications";
 const description =
   "Compare your résumé with a job description to uncover evidence-backed strengths, gaps and practical improvements before you apply.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: title,
     template: "%s | Locked In",
@@ -43,21 +44,21 @@ const structuredData = [
   {
     "@context": "https://schema.org",
     "@type": "Organization",
-    "@id": `${siteUrl}/#organization`,
+    "@id": `${SITE_URL}/#organization`,
     name: "Locked In",
-    url: siteUrl,
-    logo: `${siteUrl}/512x512.webp`,
+    url: SITE_URL,
+    logo: `${SITE_URL}/512x512.webp`,
   },
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "@id": `${siteUrl}/#software-application`,
+    "@id": `${SITE_URL}/#software-application`,
     name: "Locked In",
-    url: siteUrl,
+    url: SITE_URL,
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description,
-    publisher: { "@id": `${siteUrl}/#organization` },
+    publisher: { "@id": `${SITE_URL}/#organization` },
   },
 ];
 
@@ -73,7 +74,7 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
         />
-        <AccountProvider><GlobalHeader />{children}</AccountProvider>
+        <AccountProvider><GlobalHeader />{children}<SiteFooter /></AccountProvider>
       </body>
     </html>
   );

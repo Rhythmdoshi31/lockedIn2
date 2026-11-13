@@ -1,15 +1,14 @@
 import type { MetadataRoute } from "next";
-
-const siteUrl = "https://locked-in2.vercel.app";
+import { SITE_URL } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/pricing"],
+      allow: ["/", "/pricing", "/privacy", "/terms", "/refund-policy", "/contact"],
       disallow: ["/analyses", "/api/", "/auth", "/checkout", "/dashboard", "/profile"],
     },
-    sitemap: `${siteUrl}/sitemap.xml`,
-    host: siteUrl,
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL,
   };
 }
